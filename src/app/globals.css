@@ -1,0 +1,59 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Instrument+Serif:ital@0;1&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    font-family: 'DM Sans', sans-serif;
+    background-color: #FAFAFA;
+    color: #1A1A1A;
+  }
+
+  h1, h2, h3 {
+    font-family: 'Instrument Serif', serif;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-[#1E3A5F] hover:bg-[#162d4a] text-white font-medium px-4 py-2.5 rounded-lg transition-colors duration-150 text-sm;
+  }
+
+  .btn-secondary {
+    @apply bg-white hover:bg-gray-50 text-[#1A1A1A] font-medium px-4 py-2.5 rounded-lg border border-[#E5E7EB] transition-colors duration-150 text-sm;
+  }
+
+  .btn-danger {
+    @apply bg-red-50 hover:bg-red-100 text-red-700 font-medium px-4 py-2.5 rounded-lg border border-red-200 transition-colors duration-150 text-sm;
+  }
+
+  .input-field {
+    @apply w-full px-3 py-2.5 bg-white border border-[#E5E7EB] rounded-lg text-sm text-[#1A1A1A] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#3B82F6]/30 focus:border-[#3B82F6] transition-all duration-150;
+  }
+
+  .card {
+    @apply bg-white rounded-xl border border-[#E5E7EB] shadow-soft;
+  }
+}
+
+/* Scrollbar personalizzata */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #D1D5DB;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #9CA3AF;
+}
