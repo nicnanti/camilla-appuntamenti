@@ -204,13 +204,15 @@ export default function PaginaNuovoAppuntamento() {
             <ContactSearch
               value={form.cliente_nome}
               onChange={(nome, tel, dettagli, indirizzo) => {
-                setForm({
-                  ...form,
+                // Solo i campi forniti vengono aggiornati: digitare nel campo nome
+                // non azzera telefono/indirizzo editati a mano dall'utente.
+                setForm((prev) => ({
+                  ...prev,
                   cliente_nome: nome,
-                  cliente_telefono: tel,
-                  cliente_dettagli: dettagli,
-                  cliente_indirizzo: indirizzo,
-                })
+                  ...(tel       !== undefined && { cliente_telefono:  tel       }),
+                  ...(dettagli  !== undefined && { cliente_dettagli:  dettagli  }),
+                  ...(indirizzo !== undefined && { cliente_indirizzo: indirizzo }),
+                }))
                 if (errori.cliente_nome) setErrori({ ...errori, cliente_nome: undefined })
               }}
             />

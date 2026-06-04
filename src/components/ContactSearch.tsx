@@ -5,7 +5,10 @@ import type { Contatto } from '@/types'
 
 interface Props {
   value: string
-  onChange: (nome: string, telefono: string, dettagli: string, indirizzo: string) => void
+  // I campi diversi da nome sono `undefined` quando l'utente sta digitando manualmente
+  // (così il parent NON sovrascrive eventuali modifiche manuali a telefono/indirizzo).
+  // Vengono valorizzati solo quando l'utente seleziona un contatto dal dropdown.
+  onChange: (nome: string, telefono?: string, dettagli?: string, indirizzo?: string) => void
 }
 
 function componiIndirizzo(c: Contatto): string {
@@ -85,8 +88,9 @@ export default function ContactSearch({ value, onChange }: Props) {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setQuery(e.target.value)
     setSelezionato(false)
-    if (!e.target.value) onChange('', '', '', '')
-    else onChange(e.target.value, '', '', '')
+    // Aggiorna SOLO il nome. Lascia telefono/dettagli/indirizzo intatti:
+    // l'utente può aver editato manualmente quei campi e non vanno sovrascritti.
+    onChange(e.target.value)
   }
 
   return (
