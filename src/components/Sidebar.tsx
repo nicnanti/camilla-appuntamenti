@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import clsx from 'clsx'
+import { useApp } from '@/contexts/AppContext'
 
 const navigazione = [
   {
@@ -42,21 +43,86 @@ const navigazione = [
   },
 ]
 
+function CheckboxCalendario({
+  attivo,
+  colore,
+  label,
+  onChange,
+}: {
+  attivo: boolean
+  colore: string
+  label: string
+  onChange: () => void
+}) {
+  return (
+    <button
+      onClick={onChange}
+      className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-white/80 hover:bg-white/10 transition-colors w-full text-left min-h-[44px]"
+    >
+      <span
+        className={clsx(
+          'w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors',
+          attivo ? 'bg-white border-white' : 'border-white/40',
+        )}
+      >
+        {attivo && (
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={colore} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        )}
+      </span>
+      <span className={clsx('w-2 h-2 rounded-full', colore === '#3B82F6' ? 'bg-blue-400' : 'bg-emerald-400')} />
+      <span>{label}</span>
+    </button>
+  )
+}
+
 export default function Sidebar() {
   const pathname = usePathname()
+  const {
+    camillaSelezionata,
+    giacomoSelezionato,
+    toggleCamilla,
+    toggleGiacomo,
+    sidebarMobileAperta,
+    chiudiSidebar,
+  } = useApp()
 
   return (
-    <aside className="w-60 flex-shrink-0 bg-[#1E3A5F] flex flex-col h-full">
-      {/* Logo / Nome studio */}
-      <div className="px-6 py-7 border-b border-white/10">
-        <p className="text-white/50 text-xs font-medium uppercase tracking-widest mb-1">Studio</p>
-        <h1 className="text-white font-serif text-xl leading-tight">
-          Camilla<br />Appuntamenti
-        </h1>
+    <aside
+      className={clsx(
+        'bg-[#1E3A5F] flex flex-col h-full flex-shrink-0',
+        // Desktop: sidebar sempre visibile, 240px
+        'md:flex md:w-60 md:static',
+        // Mobile: hidden di default, full-screen overlay quando aperta
+        sidebarMobileAperta
+          ? 'fixed inset-0 z-50 w-full flex'
+          : 'hidden',
+      )}
+    >
+      {/* Header */}
+      <div className="px-6 py-7 border-b border-white/10 flex items-center justify-between">
+        <div>
+          <p className="text-white/50 text-xs font-medium uppercase tracking-widest mb-1">Studio</p>
+          <h1 className="text-white font-serif text-xl leading-tight">
+            Camilla<br />Appuntamenti
+          </h1>
+        </div>
+        {/* Close button — solo mobile */}
+        <button
+          onClick={chiudiSidebar}
+          aria-label="Chiudi menu"
+          className="md:hidden min-w-[44px] min-h-[44px] flex items-center justify-center text-white/70 hover:text-white"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
       </div>
 
       {/* Navigazione principale */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className="px-3 py-4 space-y-1">
         {navigazione.map((item) => {
           const attivo =
             item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
@@ -64,8 +130,9 @@ export default function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={chiudiSidebar}
               className={clsx(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150',
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 min-h-[44px]',
                 attivo
                   ? 'bg-white/15 text-white'
                   : 'text-white/60 hover:text-white hover:bg-white/10'
@@ -80,9 +147,28 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Impostazioni in basso */}
+      {/* Filtri calendari */}
       <div className="px-3 py-4 border-t border-white/10">
-        <button className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-white/50 hover:text-white hover:bg-white/10 transition-all duration-150 w-full">
+        <p className="px-3 text-white/40 text-xs font-medium uppercase tracking-wider mb-2">Calendari</p>
+        <div className="space-y-0.5">
+          <CheckboxCalendario
+            attivo={camillaSelezionata}
+            colore="#3B82F6"
+            label="Camilla"
+            onChange={toggleCamilla}
+          />
+          <CheckboxCalendario
+            attivo={giacomoSelezionato}
+            colore="#10B981"
+            label="Giacomo"
+            onChange={toggleGiacomo}
+          />
+        </div>
+      </div>
+
+      {/* Impostazioni in basso */}
+      <div className="mt-auto px-3 py-4 border-t border-white/10">
+        <button className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-white/50 hover:text-white hover:bg-white/10 transition-all duration-150 w-full min-h-[44px]">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="3"/>
             <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>

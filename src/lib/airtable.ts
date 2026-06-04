@@ -23,7 +23,7 @@ const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process
 
 const tabellaAppuntamenti = base('Appuntamenti')
 const tabellaProssimiAppuntamenti = base('tblS4JJw5IdVbaOmT')
-const tabellaContatti = base('tbltW0SKP1MJeg9Bv')
+const tabellaContatti = base(process.env.AIRTABLE_CONTATTI_TABLE ?? 'tblOlAYVnEDGZMfsV')
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -58,13 +58,18 @@ function mappaContatto(record: Airtable.Record<Airtable.FieldSet>): Contatto {
   const f = record.fields
   return {
     id: record.id,
-    nome: (f.nome as string) ?? '',
-    cognome: (f.cognome as string) ?? '',
-    dettagli: (f.dettagli as string) ?? '',
-    telefono: (f.numero as string) ?? '',
-    email: (f.email as string) ?? '',
-    nota: (f.nota as string) ?? '',
-    created_at: (f.created_at as string) ?? '',
+    nome: (f['Nome'] as string) ?? '',
+    cognome: (f['Cognome'] as string) ?? '',
+    nome_completo: (f['Nome Completo'] as string) ?? '',
+    telefono: (f['Telefono'] as string) ?? '',
+    email: (f['Email'] as string) ?? '',
+    indirizzo: (f['Indirizzo di Residenza'] as string) ?? '',
+    comune: (f['Comune di Residenza'] as string) ?? '',
+    provincia: (f['Provincia'] as string) ?? '',
+    gruppo: (f['gruppo'] as string) ?? '',
+    dettagli: '',
+    nota: '',
+    created_at: '',
   }
 }
 
@@ -208,7 +213,7 @@ export async function eliminaProssimiAppuntamentiPassati(): Promise<number> {
 
 export async function getContatti(ricerca?: string): Promise<Contatto[]> {
   const records = await tabellaContatti
-    .select({ sort: [{ field: 'cognome', direction: 'asc' }, { field: 'nome', direction: 'asc' }] })
+    .select({ sort: [{ field: 'Cognome', direction: 'asc' }, { field: 'Nome', direction: 'asc' }] })
     .all()
 
   const contatti = records.map(mappaContatto)
@@ -219,20 +224,26 @@ export async function getContatti(ricerca?: string): Promise<Contatto[]> {
     (c) =>
       c.nome.toLowerCase().includes(q) ||
       c.cognome.toLowerCase().includes(q) ||
+      (c.nome_completo ?? '').toLowerCase().includes(q) ||
       `${c.nome} ${c.cognome}`.toLowerCase().includes(q) ||
-      (c.dettagli ?? '').toLowerCase().includes(q)
+      `${c.cognome} ${c.nome}`.toLowerCase().includes(q)
   )
 }
 
 export async function creaContatto(dati: Omit<Contatto, 'id' | 'created_at'>): Promise<Contatto> {
-  const record = await tabellaContatti.create({
-    nome: dati.nome,
-    cognome: dati.cognome,
-    dettagli: dati.dettagli ?? '',
-    numero: dati.telefono,
-    email: dati.email ?? '',
-    nota: dati.nota ?? '',
-  })
+  const campi: Airtable.FieldSet = {
+    'Nome': dati.nome,
+    'Cognome': dati.cognome,
+    'Nome Completo': dati.nome_completo ?? `${dati.cognome} ${dati.nome}`.trim(),
+    'Telefono': dati.telefono ?? '',
+    'Email': dati.email ?? '',
+  }
+  if (dati.indirizzo !== undefined) campi['Indirizzo di Residenza'] = dati.indirizzo
+  if (dati.comune !== undefined)    campi['Comune di Residenza']    = dati.comune
+  if (dati.provincia !== undefined) campi['Provincia']              = dati.provincia
+  if (dati.gruppo !== undefined)    campi['gruppo']                 = dati.gruppo
+
+  const record = await tabellaContatti.create(campi)
   return mappaContatto(record)
 }
 
@@ -241,12 +252,16 @@ export async function aggiornaContatto(
   dati: Partial<Omit<Contatto, 'id' | 'created_at'>>
 ): Promise<Contatto> {
   const campi: Airtable.FieldSet = {}
-  if (dati.nome !== undefined) campi.nome = dati.nome
-  if (dati.cognome !== undefined) campi.cognome = dati.cognome
-  if (dati.dettagli !== undefined) campi.dettagli = dati.dettagli
-  if (dati.telefono !== undefined) campi.numero = dati.telefono
-  if (dati.email !== undefined) campi.email = dati.email
-  if (dati.nota !== undefined) campi.nota = dati.nota
+  if (dati.nome          !== undefined) campi['Nome']                   = dati.nome
+  if (dati.cognome       !== undefined) campi['Cognome']                = dati.cognome
+  if (dati.nome_completo !== undefined) campi['Nome Completo']          = dati.nome_completo
+  if (dati.telefono      !== undefined) campi['Telefono']               = dati.telefono
+  if (dati.email         !== undefined) campi['Email']                  = dati.email
+  if (dati.indirizzo     !== undefined) campi['Indirizzo di Residenza'] = dati.indirizzo
+  if (dati.comune        !== undefined) campi['Comune di Residenza']    = dati.comune
+  if (dati.provincia     !== undefined) campi['Provincia']              = dati.provincia
+  if (dati.gruppo        !== undefined) campi['gruppo']                 = dati.gruppo
+
   const record = await tabellaContatti.update(id, campi)
   return mappaContatto(record)
 }

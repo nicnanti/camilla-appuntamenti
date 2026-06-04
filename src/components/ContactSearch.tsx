@@ -5,7 +5,22 @@ import type { Contatto } from '@/types'
 
 interface Props {
   value: string
-  onChange: (nome: string, telefono: string, dettagli: string) => void
+  onChange: (nome: string, telefono: string, dettagli: string, indirizzo: string) => void
+}
+
+function componiIndirizzo(c: Contatto): string {
+  const via      = (c.indirizzo  ?? '').trim()
+  const comune   = (c.comune     ?? '').trim()
+  const prov     = (c.provincia  ?? '').trim()
+
+  const parti: string[] = []
+  if (via) parti.push(via)
+  if (comune) {
+    parti.push(prov ? `${comune} (${prov})` : comune)
+  } else if (prov) {
+    parti.push(`(${prov})`)
+  }
+  return parti.join(', ')
 }
 
 export default function ContactSearch({ value, onChange }: Props) {
@@ -53,23 +68,25 @@ export default function ContactSearch({ value, onChange }: Props) {
   }, [query, cerca, selezionato])
 
   const formattaNome = (contatto: Contatto): string => {
+    if (contatto.nome_completo) return contatto.nome_completo.toUpperCase()
     const base = `${contatto.cognome.toUpperCase()} ${contatto.nome.toUpperCase()}`
     return contatto.dettagli ? `${base} — ${contatto.dettagli}` : base
   }
 
   const seleziona = (contatto: Contatto) => {
     const nomeFormattato = formattaNome(contatto)
+    const indirizzo = componiIndirizzo(contatto)
     setQuery(nomeFormattato)
     setSelezionato(true)
     setAperto(false)
-    onChange(nomeFormattato, contatto.telefono, contatto.dettagli ?? '')
+    onChange(nomeFormattato, contatto.telefono, contatto.dettagli ?? '', indirizzo)
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setQuery(e.target.value)
     setSelezionato(false)
-    if (!e.target.value) onChange('', '', '')
-    else onChange(e.target.value, '', '')
+    if (!e.target.value) onChange('', '', '', '')
+    else onChange(e.target.value, '', '', '')
   }
 
   return (

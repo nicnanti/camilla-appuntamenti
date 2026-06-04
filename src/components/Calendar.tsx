@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import clsx from 'clsx'
 import AppointmentModal from './AppointmentModal'
+import { useApp } from '@/contexts/AppContext'
 import type { Appuntamento } from '@/types'
 
 const GIORNI_SETTIMANA = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom']
@@ -33,7 +34,6 @@ interface GiornataSidebarProps {
 }
 
 function GiornataSidebar({ data, appuntamenti, onSeleziona, onChiudi }: GiornataSidebarProps) {
-  const ora = new Date()
   const oreVisibili = Array.from({ length: 13 }, (_, i) => i + 8) // 8-20
 
   const formatOra = (h: number) => `${String(h).padStart(2, '0')}:00`
@@ -45,7 +45,7 @@ function GiornataSidebar({ data, appuntamenti, onSeleziona, onChiudi }: Giornata
     })
 
   return (
-    <div className="w-80 flex-shrink-0 border-l border-[#E5E7EB] bg-white flex flex-col">
+    <div className="md:w-80 md:flex-shrink-0 md:relative md:border-l md:border-[#E5E7EB] md:inset-auto fixed inset-0 z-40 bg-white flex flex-col">
       <div className="flex items-center justify-between p-4 border-b border-[#E5E7EB]">
         <div>
           <p className="text-xs text-gray-400 uppercase tracking-wider">
@@ -121,12 +121,24 @@ export default function Calendar() {
   const [giornoSelezionato, setGiornoSelezionato] = useState<Date | null>(null)
   const [appSelezionato, setAppSelezionato] = useState<Appuntamento | null>(null)
 
+  const { camillaSelezionata, giacomoSelezionato } = useApp()
+
   const meseStr = `${meseCorrente.getFullYear()}-${String(meseCorrente.getMonth() + 1).padStart(2, '0')}`
+
+  // Costruisce il parametro professionista in base ai filtri
+  const professionistaParam = (() => {
+    if (camillaSelezionata && giacomoSelezionato) return undefined
+    if (camillaSelezionata && !giacomoSelezionato) return 'camilla'
+    if (!camillaSelezionata && giacomoSelezionato) return 'giacomo'
+    return 'nessuno'
+  })()
 
   const caricaAppuntamenti = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/appuntamenti?mese=${meseStr}`)
+      const params = new URLSearchParams({ mese: meseStr })
+      if (professionistaParam) params.set('professionista', professionistaParam)
+      const res = await fetch(`/api/appuntamenti?${params}`)
       const data = await res.json()
       setAppuntamenti(Array.isArray(data) ? data : [])
     } catch {
@@ -134,7 +146,7 @@ export default function Calendar() {
     } finally {
       setLoading(false)
     }
-  }, [meseStr])
+  }, [meseStr, professionistaParam])
 
   useEffect(() => {
     caricaAppuntamenti()
@@ -180,11 +192,11 @@ export default function Calendar() {
   return (
     <div className="flex h-full">
       {/* Calendario principale */}
-      <div className="flex-1 p-6 flex flex-col min-w-0">
+      <div className="flex-1 p-3 sm:p-6 flex flex-col min-w-0">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <h1 className="font-serif text-2xl text-[#1A1A1A]">
+        <div className="flex items-center justify-between mb-4 sm:mb-6 gap-2">
+          <div className="flex items-center gap-3 min-w-0">
+            <h1 className="font-serif text-xl sm:text-2xl text-[#1A1A1A] truncate">
               {MESI[meseCorrente.getMonth()]} {meseCorrente.getFullYear()}
             </h1>
             {loading && (
@@ -249,7 +261,7 @@ export default function Calendar() {
                 key={idx}
                 onClick={() => setGiornoSelezionato(sel ? null : data)}
                 className={clsx(
-                  'bg-white p-2 min-h-[90px] text-left transition-colors hover:bg-blue-50/30 flex flex-col',
+                  'bg-white p-1 sm:p-2 min-h-[60px] sm:min-h-[90px] text-left transition-colors hover:bg-blue-50/30 flex flex-col',
                   sel && 'bg-blue-50/50'
                 )}
               >

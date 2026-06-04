@@ -29,6 +29,7 @@ interface FormState {
   cliente_nome: string
   cliente_telefono: string
   cliente_dettagli: string
+  cliente_indirizzo: string
   data: string
   ora_inizio: string
   ora_fine: string
@@ -83,6 +84,7 @@ export default function PaginaNuovoAppuntamento() {
     cliente_nome: '',
     cliente_telefono: '',
     cliente_dettagli: '',
+    cliente_indirizzo: '',
     data: oggi,
     ora_inizio: '09:00',
     ora_fine: '10:00',
@@ -130,6 +132,7 @@ export default function PaginaNuovoAppuntamento() {
           cliente_nome: form.cliente_nome,
           cliente_telefono: form.cliente_telefono,
           cliente_dettagli: form.cliente_dettagli,
+          indirizzo: form.cliente_indirizzo,
           data: form.data,
           ora_inizio: form.ora_inizio,
           ora_fine: form.ora_fine,
@@ -200,8 +203,14 @@ export default function PaginaNuovoAppuntamento() {
           <div className="px-4 py-3">
             <ContactSearch
               value={form.cliente_nome}
-              onChange={(nome, tel, dettagli) => {
-                setForm({ ...form, cliente_nome: nome, cliente_telefono: tel, cliente_dettagli: dettagli })
+              onChange={(nome, tel, dettagli, indirizzo) => {
+                setForm({
+                  ...form,
+                  cliente_nome: nome,
+                  cliente_telefono: tel,
+                  cliente_dettagli: dettagli,
+                  cliente_indirizzo: indirizzo,
+                })
                 if (errori.cliente_nome) setErrori({ ...errori, cliente_nome: undefined })
               }}
             />
@@ -216,6 +225,17 @@ export default function PaginaNuovoAppuntamento() {
               placeholder="Telefono (opzionale)"
               value={form.cliente_telefono}
               onChange={(e) => setForm({ ...form, cliente_telefono: e.target.value })}
+            />
+          </div>
+
+          {/* Indirizzo */}
+          <div className="px-4 py-3">
+            <input
+              type="text"
+              className="w-full text-sm text-[#1A1A1A] placeholder-gray-400 bg-transparent focus:outline-none"
+              placeholder="Indirizzo (opzionale)"
+              value={form.cliente_indirizzo}
+              onChange={(e) => setForm({ ...form, cliente_indirizzo: e.target.value })}
             />
           </div>
 

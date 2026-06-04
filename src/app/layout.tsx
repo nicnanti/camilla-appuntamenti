@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import { Toaster } from 'react-hot-toast'
 import Sidebar from '@/components/Sidebar'
+import MobileHeader from '@/components/MobileHeader'
+import { AppProvider } from '@/contexts/AppContext'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -16,12 +18,17 @@ export default function RootLayout({
   return (
     <html lang="it">
       <body className="bg-[#FAFAFA] text-[#1A1A1A] antialiased">
-        <div className="flex h-screen overflow-hidden">
-          <Sidebar />
-          <main className="flex-1 overflow-y-auto">
-            {children}
-          </main>
-        </div>
+        <AppProvider>
+          <div className="flex h-screen overflow-hidden">
+            <Sidebar />
+            <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+              <MobileHeader />
+              <main className="flex-1 overflow-y-auto">
+                {children}
+              </main>
+            </div>
+          </div>
+        </AppProvider>
         <Toaster
           position="top-right"
           toastOptions={{

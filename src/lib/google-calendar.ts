@@ -72,6 +72,8 @@ export async function creaEventoCalendar(
     },
   }
 
+  if (app.indirizzo) requestBody.location = app.indirizzo
+
   console.log('[GCal] creaEventoCalendar → calendarId:', calendarId, '| professionista:', professionistaNome)
   const risposta = await calendar.events.insert({ calendarId, requestBody })
   return risposta.data.id ?? ''
@@ -108,6 +110,8 @@ export async function aggiornaEventoCalendar(
       timeZone: 'Europe/Rome',
     }
   }
+
+  if (app.indirizzo !== undefined) aggiornamenti.location = app.indirizzo
 
   console.log('[GCal] aggiornaEventoCalendar → eventId:', eventId, '| calendarId:', calendarId, '| aggiornamenti:', JSON.stringify(aggiornamenti))
   await calendar.events.patch({ calendarId, eventId, requestBody: aggiornamenti })

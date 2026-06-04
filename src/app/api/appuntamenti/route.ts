@@ -86,12 +86,29 @@ function parseCalendarEvents(gcalId: string | undefined): Array<{ nome: string; 
   return [{ nome: 'camilla', calendarId: getCalendarIdForProfessionista('Camilla'), eventId: gcalId }]
 }
 
-// GET /api/appuntamenti?mese=YYYY-MM
+// GET /api/appuntamenti?mese=YYYY-MM&professionista=camilla|giacomo|nessuno
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const mese = searchParams.get('mese') ?? undefined
+    const prof = (searchParams.get('professionista') ?? '').toLowerCase()
     const appuntamenti = await getAppuntamenti(mese)
+
+    if (prof === 'nessuno') {
+      return NextResponse.json([])
+    }
+
+    if (prof === 'camilla' || prof === 'giacomo') {
+      const nomeTarget   = prof === 'camilla' ? 'Camilla' : 'Giacomo'
+      const emailTarget  = (resolveEmail(nomeTarget) ?? '').toLowerCase()
+      const filtrati = appuntamenti.filter((a) => {
+        if (a.professionista === nomeTarget) return true
+        if (emailTarget && (a.guests ?? '').toLowerCase().includes(emailTarget)) return true
+        return false
+      })
+      return NextResponse.json(filtrati)
+    }
+
     return NextResponse.json(appuntamenti)
   } catch (error) {
     console.error('Errore GET /api/appuntamenti:', error)
@@ -107,6 +124,7 @@ export async function POST(request: NextRequest) {
       cliente_nome,
       cliente_telefono,
       cliente_dettagli,
+      indirizzo,
       data,
       ora_inizio,
       ora_fine,
@@ -129,6 +147,7 @@ export async function POST(request: NextRequest) {
       cliente_nome,
       cliente_telefono: cliente_telefono ?? '',
       cliente_dettagli: cliente_dettagli ?? '',
+      indirizzo: indirizzo ?? '',
       data,
       ora_inizio,
       ora_fine,

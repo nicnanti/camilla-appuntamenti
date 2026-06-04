@@ -12,6 +12,7 @@ export interface Appuntamento {
   professionista?: string            // "Camilla" | "Giacomo" — per UI/colori
   host?: string                      // email del professionista — colonna Airtable "host"
   guests?: string                    // email dei guest comma-separated — colonna Airtable "guests"
+  indirizzo?: string                 // luogo dell'appuntamento (Via, Comune, Provincia)
   reminder_sent: boolean
   reminder_sent_at?: string
   stato: StatoAppuntamento
@@ -26,9 +27,14 @@ export interface Contatto {
   id: string
   nome: string
   cognome: string
+  nome_completo?: string
   dettagli?: string
   telefono: string
   email?: string
   nota?: string
+  indirizzo?: string   // "Indirizzo di Residenza" — la via
+  comune?: string      // "Comune di Residenza"
+  provincia?: string
+  gruppo?: string
   created_at?: string
 }
