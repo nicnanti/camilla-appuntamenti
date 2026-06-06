@@ -73,7 +73,12 @@ export default function InvitatiPicker({ invitati, onAggiungi, onRimuovi }: Prop
               key={`${inv.telefono}-${i}`}
               className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-full bg-blue-50 border border-blue-200 text-xs text-blue-800 max-w-full"
             >
-              <span className="truncate">{inv.nome}</span>
+              <span className="truncate">
+                {inv.nome}
+                {inv.telefono && (
+                  <span className="text-blue-500/80 font-normal"> — {inv.telefono}</span>
+                )}
+              </span>
               <button
                 type="button"
                 onClick={() => onRimuovi(i)}

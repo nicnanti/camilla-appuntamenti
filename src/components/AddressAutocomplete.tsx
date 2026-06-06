@@ -56,18 +56,21 @@ export default function AddressAutocomplete({ value, onChange, placeholder }: Pr
       return
     }
     setLoading(true)
+    console.log('[AddressAutocomplete] cerca query:', q)
     try {
-      const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&lang=it&limit=5&bbox=6.6,35.5,18.5,47.1`
-      const res = await fetch(url)
+      const res = await fetch(`/api/address-search?q=${encodeURIComponent(q)}`)
+      console.log('[AddressAutocomplete] response status:', res.status)
       const data = await res.json()
+      console.log('[AddressAutocomplete] data:', data)
       const features = (data.features ?? []) as PhotonFeature[]
-      // Priorità ai risultati italiani
       const italiani = features.filter((f) => f.properties.countrycode === 'IT')
       const altri    = features.filter((f) => f.properties.countrycode !== 'IT')
       const ordinati = [...italiani, ...altri]
+      console.log('[AddressAutocomplete] risultati ordinati:', ordinati.length)
       setRisultati(ordinati)
       setAperto(ordinati.length > 0)
-    } catch {
+    } catch (err) {
+      console.error('[AddressAutocomplete] errore fetch:', err)
       setRisultati([])
     } finally {
       setLoading(false)
