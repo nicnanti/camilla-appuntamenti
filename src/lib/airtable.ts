@@ -1,10 +1,29 @@
 import Airtable from 'airtable'
-import type { Appuntamento, Contatto } from '@/types'
+import type { Appuntamento, Contatto, Invitato } from '@/types'
 
 interface GcalEntry {
   professionista: string
   calendarId: string
   eventId: string
+}
+
+function parseInvitati(raw: unknown): Invitato[] {
+  if (!raw) return []
+  if (typeof raw !== 'string') return []
+  try {
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) {
+      return parsed
+        .filter((i) => i && typeof i.nome === 'string')
+        .map((i) => ({ nome: String(i.nome), telefono: String(i.telefono ?? ''), email: i.email ? String(i.email) : undefined }))
+    }
+  } catch {}
+  return []
+}
+
+function stringifyInvitati(invitati?: Invitato[]): string {
+  if (!invitati || invitati.length === 0) return ''
+  return JSON.stringify(invitati)
 }
 
 function parseGcalEntry(gcalId: string): GcalEntry | null {
@@ -50,6 +69,7 @@ function mappaAppuntamento(record: Airtable.Record<Airtable.FieldSet>): Appuntam
     stato: (f.stato as Appuntamento['stato']) ?? 'Confermato',
     ics_uid: (f.ics_uid as string) ?? '',
     ics_sequence: (f.ics_sequence as number) ?? 0,
+    invitati: parseInvitati(f.invitati),
     created_at: (f.created_at as string) ?? '',
   }
 }
@@ -114,6 +134,7 @@ export async function creaAppuntamento(
     stato: 'Confermato',
     ics_uid: dati.ics_uid ?? '',
     ics_sequence: dati.ics_sequence ?? 0,
+    invitati: stringifyInvitati(dati.invitati),
   })
   return mappaAppuntamento(record)
 }
@@ -135,6 +156,7 @@ export async function aggiornaAppuntamento(
   if (dati.stato !== undefined) campi.stato = dati.stato
   if (dati.ics_uid !== undefined) campi.ics_uid = dati.ics_uid
   if (dati.ics_sequence !== undefined) campi.ics_sequence = dati.ics_sequence
+  if (dati.invitati !== undefined) campi.invitati = stringifyInvitati(dati.invitati)
 
   const record = await tabellaAppuntamenti.update(id, campi)
   return mappaAppuntamento(record)
@@ -161,6 +183,7 @@ export async function creaProssimoAppuntamento(app: Appuntamento): Promise<void>
     stato: app.stato,
     ics_uid: app.ics_uid ?? '',
     ics_sequence: app.ics_sequence ?? 0,
+    invitati: stringifyInvitati(app.invitati),
   })
 }
 
@@ -186,6 +209,7 @@ export async function aggiornaProssimoAppuntamentoByGcalId(
   if (dati.stato !== undefined) campi.stato = dati.stato
   if (dati.ics_uid !== undefined) campi.ics_uid = dati.ics_uid
   if (dati.ics_sequence !== undefined) campi.ics_sequence = dati.ics_sequence
+  if (dati.invitati !== undefined) campi.invitati = stringifyInvitati(dati.invitati)
 
   await tabellaProssimiAppuntamenti.update(records[0].id, campi)
 }

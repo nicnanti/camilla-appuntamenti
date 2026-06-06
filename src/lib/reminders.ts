@@ -1,6 +1,24 @@
 import Airtable from 'airtable'
 import { inviaReminderWhatsApp, formatDataConGiorno, getDataTarget } from './sendpulse'
 
+interface InvitatoLite {
+  nome: string
+  telefono: string
+}
+
+function parseInvitatiField(raw: unknown): InvitatoLite[] {
+  if (typeof raw !== 'string' || !raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) {
+      return parsed
+        .filter((i) => i && typeof i.telefono === 'string' && i.telefono.trim())
+        .map((i) => ({ nome: String(i.nome ?? ''), telefono: String(i.telefono) }))
+    }
+  } catch {}
+  return []
+}
+
 export interface RisultatoCheckReminders {
   success: true
   date_checked: string
@@ -62,30 +80,54 @@ export async function eseguiCheckReminders(options?: { dataTarget?: string }): P
     const telefono    = (record.fields.cliente_telefono as string) ?? ''
     const data        = (record.fields.data as string) ?? ''
     const oraInizio   = (record.fields.ora_inizio as string) ?? ''
+    const invitati    = parseInvitatiField(record.fields.invitati)
+    const dataFmt     = formatDataConGiorno(data)
 
-    if (!telefono) {
-      const msg = `Numero mancante per appuntamento ${id} (${clienteNome})`
+    if (!telefono && invitati.length === 0) {
+      const msg = `Numero mancante per appuntamento ${id} (${clienteNome}) — nessun invitato con telefono`
       console.warn('[Reminder]', msg)
       errors.push(msg)
       failed++
       continue
     }
 
-    try {
-      await inviaReminderWhatsApp({
-        phone: telefono,
-        nomeCliente: clienteNome,
-        dataFormattata: formatDataConGiorno(data),
-        oraInizio,
-      })
-      await segnaReminderInviato(id, clienteNome)
-      sent++
-      console.log(`[Reminder] ✓ Inviato a ${clienteNome} (${telefono})`)
-    } catch (err) {
-      const msg = `Errore invio a ${clienteNome} (${telefono}): ${err instanceof Error ? err.message : String(err)}`
-      console.error('[Reminder]', msg)
-      errors.push(msg)
-      failed++
+    // 1) Invia al cliente principale (se ha telefono)
+    let clienteInviato = false
+    if (telefono) {
+      try {
+        await inviaReminderWhatsApp({ phone: telefono, nomeCliente: clienteNome, dataFormattata: dataFmt, oraInizio })
+        clienteInviato = true
+        sent++
+        console.log(`[Reminder] ✓ Inviato a ${clienteNome} (${telefono})`)
+      } catch (err) {
+        const msg = `Errore invio a ${clienteNome} (${telefono}): ${err instanceof Error ? err.message : String(err)}`
+        console.error('[Reminder]', msg)
+        errors.push(msg)
+        failed++
+      }
+    }
+
+    // 2) Invia agli invitati (best-effort, non blocca)
+    for (const inv of invitati) {
+      try {
+        await inviaReminderWhatsApp({ phone: inv.telefono, nomeCliente: inv.nome || clienteNome, dataFormattata: dataFmt, oraInizio })
+        sent++
+        console.log(`[Reminder] ✓ Inviato a invitato ${inv.nome} (${inv.telefono})`)
+      } catch (err) {
+        const msg = `Errore invio a invitato ${inv.nome} (${inv.telefono}): ${err instanceof Error ? err.message : String(err)}`
+        console.error('[Reminder]', msg)
+        errors.push(msg)
+        failed++
+      }
+    }
+
+    // Segna reminder_sent se almeno il cliente principale (o, se manca, almeno un invitato) è stato inviato
+    if (clienteInviato || (!telefono && invitati.length > 0)) {
+      try {
+        await segnaReminderInviato(id, clienteNome)
+      } catch (err) {
+        console.warn('[Reminder] Impossibile segnare reminder_sent:', err)
+      }
     }
   }
 

@@ -131,7 +131,11 @@ export async function POST(request: NextRequest) {
       note,
       professionista,  // "Camilla" | "Giacomo"
       guest,           // string[]: ["Giacomo", "Fiorella", ...]
+      invitati,        // Invitato[]: [{ nome, telefono, email? }, ...]
     } = body
+
+    const invitatiList: Array<{ nome: string; telefono: string; email?: string }> =
+      Array.isArray(invitati) ? invitati : []
 
     if (!cliente_nome || !data || !ora_inizio || !ora_fine) {
       return NextResponse.json({ errore: 'Campi obbligatori mancanti' }, { status: 400 })
@@ -192,6 +196,7 @@ export async function POST(request: NextRequest) {
       guests: guestEmails.join(','),
       ics_uid: icsUid,
       ics_sequence: 0,
+      invitati: invitatiList,
     })
 
     try {
@@ -209,6 +214,19 @@ export async function POST(request: NextRequest) {
         )
       } catch (err) {
         console.error(`Errore invio .ics a ${email}:`, err)
+      }
+    }
+
+    // ── Email .ics: invitati con indirizzo email ──────────────────────────────
+    for (const inv of invitatiList) {
+      if (!inv.email) continue
+      try {
+        await inviaInvitoCalendario(
+          { cliente_nome, cliente_telefono: cliente_telefono ?? '', note: note ?? '', data, ora_inizio, ora_fine, professionistaNome: prof, icsUid, icsSequence: 0 },
+          inv.email
+        )
+      } catch (err) {
+        console.error(`Errore invio .ics a invitato ${inv.email}:`, err)
       }
     }
 

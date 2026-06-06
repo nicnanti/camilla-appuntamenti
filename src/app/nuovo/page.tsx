@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 import ContactSearch from '@/components/ContactSearch'
 import DatePicker from '@/components/DatePicker'
+import AddressAutocomplete from '@/components/AddressAutocomplete'
+import InvitatiPicker from '@/components/InvitatiPicker'
+import type { Invitato } from '@/types'
 
 function generaSlotOrari(): string[] {
   const slot: string[] = []
@@ -36,6 +39,7 @@ interface FormState {
   note: string
   professionista: string
   guest: string[]
+  invitati: Invitato[]
 }
 
 interface Errori {
@@ -91,6 +95,7 @@ export default function PaginaNuovoAppuntamento() {
     note: '',
     professionista: '',
     guest: [],
+    invitati: [],
   })
   const [errori, setErrori] = useState<Errori>({})
   const [loading, setLoading] = useState(false)
@@ -139,6 +144,7 @@ export default function PaginaNuovoAppuntamento() {
           note: form.note,
           professionista: form.professionista,
           guest: form.guest,
+          invitati: form.invitati,
           tipo: '',
         }),
       })
@@ -230,14 +236,21 @@ export default function PaginaNuovoAppuntamento() {
             />
           </div>
 
-          {/* Indirizzo */}
+          {/* Indirizzo (con autocomplete OpenStreetMap/Photon) */}
           <div className="px-4 py-3">
-            <input
-              type="text"
-              className="w-full text-sm text-[#1A1A1A] placeholder-gray-400 bg-transparent focus:outline-none"
-              placeholder="Indirizzo (opzionale)"
+            <AddressAutocomplete
               value={form.cliente_indirizzo}
-              onChange={(e) => setForm({ ...form, cliente_indirizzo: e.target.value })}
+              onChange={(v) => setForm((prev) => ({ ...prev, cliente_indirizzo: v }))}
+            />
+          </div>
+
+          {/* Invitati extra */}
+          <div className="px-4 py-3">
+            <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-2">Invitati</p>
+            <InvitatiPicker
+              invitati={form.invitati}
+              onAggiungi={(inv) => setForm((prev) => ({ ...prev, invitati: [...prev.invitati, inv] }))}
+              onRimuovi={(idx) => setForm((prev) => ({ ...prev, invitati: prev.invitati.filter((_, i) => i !== idx) }))}
             />
           </div>
 

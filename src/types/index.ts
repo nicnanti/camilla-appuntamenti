@@ -1,3 +1,9 @@
+export interface Invitato {
+  nome: string
+  telefono: string
+  email?: string
+}
+
 export interface Appuntamento {
   id: string
   cliente_nome: string
@@ -13,6 +19,7 @@ export interface Appuntamento {
   host?: string                      // email del professionista — colonna Airtable "host"
   guests?: string                    // email dei guest comma-separated — colonna Airtable "guests"
   indirizzo?: string                 // luogo dell'appuntamento (Via, Comune, Provincia)
+  invitati?: Invitato[]              // invitati extra dalla tabella Contatti (JSON nel campo Airtable "invitati")
   reminder_sent: boolean
   reminder_sent_at?: string
   stato: StatoAppuntamento
