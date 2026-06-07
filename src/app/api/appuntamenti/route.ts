@@ -86,6 +86,27 @@ function parseCalendarEvents(gcalId: string | undefined): Array<{ nome: string; 
   return [{ nome: 'camilla', calendarId: getCalendarIdForProfessionista('Camilla'), eventId: gcalId }]
 }
 
+// Estrae i nomi-chiave (lowercase) dal gcalId raw — gestisce nuovo formato, legacy e array
+function chiaviProfDalGcalId(gcalId?: string): Set<string> {
+  if (!gcalId) return new Set()
+  try {
+    const parsed = JSON.parse(gcalId)
+    // Nuovo formato: {"camilla":"id","giacomo":"id"}
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && !parsed.eventId && !parsed.professionista) {
+      return new Set(Object.keys(parsed).filter((k) => parsed[k]).map((k) => k.toLowerCase()))
+    }
+    // Vecchio formato singolo: {professionista, calendarId, eventId}
+    if (parsed && !Array.isArray(parsed) && parsed.professionista) {
+      return new Set([String(parsed.professionista).toLowerCase()])
+    }
+    // Vecchio array
+    if (Array.isArray(parsed)) {
+      return new Set(parsed.map((e) => String(e.professionista ?? '').toLowerCase()).filter(Boolean))
+    }
+  } catch {}
+  return new Set()
+}
+
 // GET /api/appuntamenti?mese=YYYY-MM&professionista=camilla|giacomo|nessuno
 export async function GET(request: NextRequest) {
   try {
@@ -93,22 +114,38 @@ export async function GET(request: NextRequest) {
     const mese = searchParams.get('mese') ?? undefined
     const prof = (searchParams.get('professionista') ?? '').toLowerCase()
     const appuntamenti = await getAppuntamenti(mese)
+    console.log(`[GET /api/appuntamenti] mese=${mese ?? '*'} prof=${prof || '*'} → letti da Airtable: ${appuntamenti.length}`)
 
     if (prof === 'nessuno') {
+      console.log(`[GET /api/appuntamenti] filtro=nessuno → restituiti: 0`)
       return NextResponse.json([])
     }
 
     if (prof === 'camilla' || prof === 'giacomo') {
-      const nomeTarget   = prof === 'camilla' ? 'Camilla' : 'Giacomo'
-      const emailTarget  = (resolveEmail(nomeTarget) ?? '').toLowerCase()
+      const emailTarget  = (resolveEmail(prof === 'camilla' ? 'Camilla' : 'Giacomo') ?? '').toLowerCase()
       const filtrati = appuntamenti.filter((a) => {
-        if (a.professionista === nomeTarget) return true
+        const profsCoinvolti = chiaviProfDalGcalId(a.google_calendar_event_id)
+        // 1) Match diretto sul professionista parsato (case-insensitive)
+        if ((a.professionista ?? '').toLowerCase() === prof) return true
+        // 2) Match nelle chiavi del gcalId JSON (per record con più professionisti)
+        if (profsCoinvolti.has(prof)) return true
+        // 3) Match nell'email guests (per record creati dalla piattaforma con guests)
         if (emailTarget && (a.guests ?? '').toLowerCase().includes(emailTarget)) return true
         return false
       })
+      // Log dettagliato per debug
+      console.log(`[GET /api/appuntamenti] filtro=${prof} → restituiti: ${filtrati.length}/${appuntamenti.length}`)
+      if (filtrati.length === 0 && appuntamenti.length > 0) {
+        console.log(`[GET /api/appuntamenti] DEBUG primi 5 record esclusi:`)
+        appuntamenti.slice(0, 5).forEach((a) => {
+          const profs = Array.from(chiaviProfDalGcalId(a.google_calendar_event_id)).join(',') || '(vuoto)'
+          console.log(`  id=${a.id} | cliente=${a.cliente_nome} | prof=${a.professionista || '(vuoto)'} | gcalKeys=${profs} | guests=${a.guests || '(vuoto)'} | rawGcal=${(a.google_calendar_event_id ?? '').slice(0, 60)}`)
+        })
+      }
       return NextResponse.json(filtrati)
     }
 
+    console.log(`[GET /api/appuntamenti] nessun filtro → restituiti: ${appuntamenti.length}`)
     return NextResponse.json(appuntamenti)
   } catch (error) {
     console.error('Errore GET /api/appuntamenti:', error)

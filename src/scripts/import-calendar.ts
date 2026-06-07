@@ -53,25 +53,32 @@ async function main() {
   const calendar = google.calendar({ version: 'v3', auth })
 
   const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID!)
-  const tabellaProssimi = base('tblS4JJw5IdVbaOmT')
+  const tabellaProssimi      = base('tblS4JJw5IdVbaOmT')
+  const tabellaAppuntamenti  = base('Appuntamenti')
 
   let totImportati = 0
   let totDuplicati = 0
   let totSaltati   = 0
   let totErrori    = 0
 
+  // Finestra di import: da oggi a 2 mesi nel futuro
+  const traDueMesi = new Date()
+  traDueMesi.setMonth(traDueMesi.getMonth() + 2)
+
   for (const prof of PROFESSIONISTI) {
     const calendarId = process.env[prof.envKey]!
     console.log('\n═══════════════════════════════════════════════════════')
     console.log(`Calendario di ${prof.nome}: ${calendarId}`)
+    console.log(`Finestra: ${new Date().toISOString()} → ${traDueMesi.toISOString()}`)
     console.log('═══════════════════════════════════════════════════════')
 
     const risposta = await calendar.events.list({
       calendarId,
       singleEvents: true,
       orderBy: 'startTime',
-      maxResults: 2500,
+      maxResults: 250,
       timeMin: new Date().toISOString(),
+      timeMax: traDueMesi.toISOString(),
     })
 
     const eventi = risposta.data.items ?? []
@@ -89,12 +96,17 @@ async function main() {
         continue
       }
 
-      // Check duplicato: cerca l'eventId dentro il campo (gestisce sia plain string che JSON)
-      const duplicati = await tabellaProssimi
-        .select({ filterByFormula: `FIND('${eventId}', {google_calendar_event_id})`, maxRecords: 1 })
-        .all()
-      if (duplicati.length > 0) {
-        console.log(`  [DUP]     "${summary}" — eventId ${eventId.slice(0, 10)}… già presente`)
+      // Check duplicato: cerca l'eventId in ENTRAMBE le tabelle
+      const [dupProssimi, dupAppuntamenti] = await Promise.all([
+        tabellaProssimi
+          .select({ filterByFormula: `FIND('${eventId}', {google_calendar_event_id})`, maxRecords: 1 })
+          .all(),
+        tabellaAppuntamenti
+          .select({ filterByFormula: `FIND('${eventId}', {google_calendar_event_id})`, maxRecords: 1 })
+          .all(),
+      ])
+      if (dupProssimi.length > 0 && dupAppuntamenti.length > 0) {
+        console.log(`  [DUP]     "${summary}" — eventId ${eventId.slice(0, 10)}… già presente in entrambe le tabelle`)
         totDuplicati++
         continue
       }
@@ -106,20 +118,29 @@ async function main() {
       // Formato gcal-id consistente con quello scritto dalla API: {"camilla":"eventId"}
       const gcalIdJson = JSON.stringify({ [prof.nome.toLowerCase()]: eventId })
 
+      const fields = {
+        cliente_nome: summary,
+        cliente_telefono: '',
+        data,
+        ora_inizio: oraInizio,
+        ora_fine: oraFine,
+        note: evento.description ?? '',
+        google_calendar_event_id: gcalIdJson,
+        host: calendarId,
+        guests: '',
+        reminder_sent: false,
+        stato: 'Confermato' as const,
+      }
+
       try {
-        await tabellaProssimi.create({
-          cliente_nome: summary,
-          cliente_telefono: '',
-          data,
-          ora_inizio: oraInizio,
-          ora_fine: oraFine,
-          note: evento.description ?? '',
-          google_calendar_event_id: gcalIdJson,
-          host: calendarId,
-          guests: '',
-          reminder_sent: false,
-          stato: 'Confermato',
-        })
+        // Scrivi in "Appuntamenti" (usato dal calendario UI) se non già presente
+        if (dupAppuntamenti.length === 0) {
+          await tabellaAppuntamenti.create(fields)
+        }
+        // Scrivi in "Prossimi Appuntamenti" (usato dal cron reminder) se non già presente
+        if (dupProssimi.length === 0) {
+          await tabellaProssimi.create(fields)
+        }
         console.log(`  [OK]      "${summary}" — ${data} ${oraInizio}–${oraFine}`)
         totImportati++
       } catch (err) {

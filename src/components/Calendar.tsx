@@ -12,18 +12,50 @@ const MESI = [
   'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre',
 ]
 
-// Colori basati sul professionista singolo
+// Estrae i professionisti coinvolti (Camilla, Giacomo) sia dal campo professionista
+// sia dalle chiavi del gcalId JSON sia dalle email nei guests.
+const EMAIL_CAMILLA = 'camilla.ghisleni1@gmail.com'
+const EMAIL_GIACOMO = 'giacomo.ghisleni1@gmail.com'
+
+function profCoinvolti(app: Appuntamento): { camilla: boolean; giacomo: boolean } {
+  const prof = (app.professionista ?? '').toLowerCase()
+  let camilla = prof === 'camilla'
+  let giacomo = prof === 'giacomo'
+
+  // Chiavi del gcalId JSON
+  try {
+    const parsed = JSON.parse(app.google_calendar_event_id ?? '')
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && !parsed.eventId) {
+      if (parsed.camilla) camilla = true
+      if (parsed.giacomo) giacomo = true
+    }
+  } catch {}
+
+  // Guests email
+  const guests = (app.guests ?? '').toLowerCase()
+  if (guests.includes(EMAIL_CAMILLA)) camilla = true
+  if (guests.includes(EMAIL_GIACOMO)) giacomo = true
+
+  return { camilla, giacomo }
+}
+
+// Colori basati sui professionisti coinvolti
 function getColoriApp(app: Appuntamento): { dot: string; chip: string } {
-  if (app.professionista === 'Giacomo') {
+  const { camilla, giacomo } = profCoinvolti(app)
+  if (camilla && giacomo) {
+    return { dot: 'bg-amber-500', chip: 'bg-amber-50 text-amber-800 border-amber-200' }
+  }
+  if (giacomo) {
     return { dot: 'bg-emerald-500', chip: 'bg-emerald-50 text-emerald-800 border-emerald-200' }
   }
-  // Camilla o legacy senza professionista
+  // Camilla (default anche per legacy senza professionista risolto)
   return { dot: 'bg-blue-500', chip: 'bg-blue-50 text-blue-800 border-blue-200' }
 }
 
 const LEGENDA = [
   { label: 'Camilla', dot: 'bg-blue-500' },
   { label: 'Giacomo', dot: 'bg-emerald-500' },
+  { label: 'Entrambi', dot: 'bg-amber-500' },
 ]
 
 interface GiornataSidebarProps {

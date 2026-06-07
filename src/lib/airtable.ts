@@ -30,7 +30,21 @@ function parseGcalEntry(gcalId: string): GcalEntry | null {
   if (!gcalId) return null
   try {
     const parsed = JSON.parse(gcalId)
+    // Nuovo formato: {"camilla":"eventId"} o {"giacomo":"eventId","camilla":"..."}
+    if (parsed && !Array.isArray(parsed) && !parsed.eventId && !parsed.professionista) {
+      const chiavi = Object.keys(parsed).filter((k) => typeof parsed[k] === 'string' && parsed[k])
+      if (chiavi.length > 0) {
+        const nome = chiavi[0]
+        return {
+          professionista: nome.charAt(0).toUpperCase() + nome.slice(1),
+          calendarId: '',
+          eventId: parsed[nome] as string,
+        }
+      }
+    }
+    // Vecchio formato oggetto: {professionista, calendarId, eventId}
     if (parsed && !Array.isArray(parsed) && parsed.eventId) return parsed as GcalEntry
+    // Vecchio formato array
     if (Array.isArray(parsed) && parsed.length > 0) {
       return { professionista: parsed[0].professionista ?? '', calendarId: parsed[0].calendarId ?? '', eventId: parsed[0].eventId ?? '' }
     }
