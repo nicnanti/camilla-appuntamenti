@@ -219,7 +219,10 @@ export async function aggiornaProssimoAppuntamentoByGcalId(
   const records = await tabellaProssimiAppuntamenti
     .select({ filterByFormula: `FIND('${gcalId}', {google_calendar_event_id})`, maxRecords: 1 })
     .all()
-  if (records.length === 0) return
+  if (records.length === 0) {
+    console.warn(`[Airtable] aggiornaProssimo: nessun record con eventId ${gcalId.slice(0, 12)}… nella tabella Prossimi Appuntamenti (skip)`)
+    return
+  }
 
   const campi: Record<string, unknown> = {}
   if (dati.cliente_nome !== undefined) campi.cliente_nome = dati.cliente_nome
@@ -242,7 +245,10 @@ export async function eliminaProssimoAppuntamentoByGcalId(gcalId: string): Promi
   const records = await tabellaProssimiAppuntamenti
     .select({ filterByFormula: `FIND('${gcalId}', {google_calendar_event_id})`, maxRecords: 1 })
     .all()
-  if (records.length === 0) return
+  if (records.length === 0) {
+    console.warn(`[Airtable] eliminaProssimo: nessun record con eventId ${gcalId.slice(0, 12)}… nella tabella Prossimi Appuntamenti (skip)`)
+    return
+  }
   await tabellaProssimiAppuntamenti.destroy(records[0].id)
 }
 

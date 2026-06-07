@@ -238,8 +238,13 @@ export async function POST(request: NextRequest) {
 
     try {
       await creaProssimoAppuntamento(appuntamento)
+      console.log(`[POST /api/appuntamenti] ✓ Prossimi Appuntamenti — record creato per ${appuntamento.cliente_nome}`)
     } catch (err) {
-      console.error('Errore Prossimi Appuntamenti (creazione):', err)
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`[POST /api/appuntamenti] ✗ ERRORE CRITICO Prossimi Appuntamenti (creazione): ${msg}`)
+      console.error(`  → Il reminder WhatsApp non partirà per questo appuntamento finché non viene corretto.`)
+      console.error(`  → Verifica che la tabella "Prossimi Appuntamenti" (tblS4JJw5IdVbaOmT) abbia TUTTI i campi: invitati, ics_uid, ics_sequence, reminder_sent_at, host, guests.`)
+      console.error(`  Dati inviati:`, JSON.stringify(appuntamento, null, 2))
     }
 
     // ── Email .ics: tutti i guest ─────────────────────────────────────────────
@@ -322,8 +327,10 @@ export async function PATCH(request: NextRequest) {
           ...reminderReset,
           ics_sequence: nuovaSequence,
         })
+        console.log(`[PATCH /api/appuntamenti] ✓ Prossimi Appuntamenti — record aggiornato (eventId ${primaryEntry.eventId.slice(0, 10)}…)`)
       } catch (err) {
-        console.error('Errore Prossimi Appuntamenti (aggiornamento):', err)
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error(`[PATCH /api/appuntamenti] ✗ ERRORE Prossimi Appuntamenti (aggiornamento): ${msg}`)
       }
     }
 
@@ -408,8 +415,10 @@ export async function DELETE(request: NextRequest) {
     if (primaryEntry?.eventId) {
       try {
         await eliminaProssimoAppuntamentoByGcalId(primaryEntry.eventId)
+        console.log(`[DELETE /api/appuntamenti] ✓ Prossimi Appuntamenti — record eliminato (eventId ${primaryEntry.eventId.slice(0, 10)}…)`)
       } catch (err) {
-        console.error('Errore Prossimi Appuntamenti (eliminazione):', err)
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error(`[DELETE /api/appuntamenti] ✗ ERRORE Prossimi Appuntamenti (eliminazione): ${msg}`)
       }
     }
 
