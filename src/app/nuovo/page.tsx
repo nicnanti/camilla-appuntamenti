@@ -165,8 +165,8 @@ export default function PaginaNuovoAppuntamento() {
   const guestDisponibili = GUEST_OPTIONS[form.professionista] ?? []
 
   return (
-    <div className="h-full flex items-center justify-center p-6 overflow-hidden">
-      <form onSubmit={creaAppuntamento} noValidate className="w-full max-w-sm">
+    <div className="min-h-full flex justify-center px-4 py-8 sm:py-12">
+      <form onSubmit={creaAppuntamento} noValidate className="w-full max-w-sm pb-16">
 
         <h1 className="font-serif text-2xl text-[#1A1A1A] mb-4 text-center">Nuovo appuntamento</h1>
 
