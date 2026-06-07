@@ -91,10 +91,33 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
     return `${day}/${m}/${y}`
   }
 
-  // Colore badge professionista
+  // Colore badge professionista (host)
   const badgeClass = appuntamento.professionista === 'Giacomo'
     ? 'bg-emerald-100 text-emerald-800'
     : 'bg-blue-100 text-blue-800'
+
+  // Calcola i guest professionisti (Camilla/Giacomo coinvolti ma non host)
+  const EMAIL_CAMILLA = 'camilla.ghisleni1@gmail.com'
+  const EMAIL_GIACOMO = 'giacomo.ghisleni1@gmail.com'
+  const host = appuntamento.professionista ?? ''
+  const guestProf: string[] = (() => {
+    const out: string[] = []
+    const guestsLower = (appuntamento.guests ?? '').toLowerCase()
+    let camillaCoinvolta = false
+    let giacomoCoinvolto = false
+    try {
+      const parsed = JSON.parse(appuntamento.google_calendar_event_id ?? '')
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && !parsed.eventId) {
+        if (parsed.camilla) camillaCoinvolta = true
+        if (parsed.giacomo) giacomoCoinvolto = true
+      }
+    } catch {}
+    if (guestsLower.includes(EMAIL_CAMILLA)) camillaCoinvolta = true
+    if (guestsLower.includes(EMAIL_GIACOMO)) giacomoCoinvolto = true
+    if (camillaCoinvolta && host !== 'Camilla') out.push('Camilla')
+    if (giacomoCoinvolto && host !== 'Giacomo') out.push('Giacomo')
+    return out
+  })()
 
   return (
     <div
@@ -105,11 +128,28 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-[#E5E7EB]">
           <div>
-            {appuntamento.professionista && (
-              <span className={`inline-block text-xs font-medium px-2.5 py-1 rounded-full mb-2 ${badgeClass}`}>
-                {appuntamento.professionista}
-              </span>
-            )}
+            <div className="flex flex-wrap items-center gap-1.5 mb-2">
+              {appuntamento.professionista && (
+                <span className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full ${badgeClass}`}>
+                  {appuntamento.professionista}
+                  <span className="opacity-70 font-normal">(host)</span>
+                </span>
+              )}
+              {guestProf.map((g) => (
+                <span
+                  key={g}
+                  className={clsx(
+                    'inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full border border-dashed',
+                    g === 'Giacomo'
+                      ? 'bg-emerald-50/60 text-emerald-700 border-emerald-400'
+                      : 'bg-blue-50/60 text-blue-700 border-blue-400',
+                  )}
+                >
+                  {g}
+                  <span className="opacity-70 font-normal">(ospite)</span>
+                </span>
+              ))}
+            </div>
             <h2 className="font-serif text-xl text-[#1A1A1A]">{appuntamento.cliente_nome}</h2>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors p-1">

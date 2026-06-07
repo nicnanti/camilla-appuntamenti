@@ -39,17 +39,55 @@ function profCoinvolti(app: Appuntamento): { camilla: boolean; giacomo: boolean 
   return { camilla, giacomo }
 }
 
-// Colori basati sui professionisti coinvolti
-function getColoriApp(app: Appuntamento): { dot: string; chip: string } {
+// Ruolo del professionista in un appuntamento: 'host' (principale) | 'guest' | null
+export type RuoloProf = 'host' | 'guest' | null
+
+export function ruoloProf(app: Appuntamento, prof: 'camilla' | 'giacomo'): RuoloProf {
+  const coinvolti = profCoinvolti(app)
+  if (!coinvolti[prof]) return null
+  const host = (app.professionista ?? '').toLowerCase()
+  if (!host) return 'guest'
+  return host === prof ? 'host' : 'guest'
+}
+
+// Colori chip/dot — quando il filtro è su un singolo prof, distingue host/guest;
+// in vista "Entrambi" usa la palette completa (blu / verde / ambra).
+function getColoriApp(
+  app: Appuntamento,
+  filtroSingolo: 'camilla' | 'giacomo' | null,
+): { dot: string; chip: string; isGuest: boolean } {
+  if (filtroSingolo) {
+    const ruolo = ruoloProf(app, filtroSingolo)
+    if (ruolo === 'guest') {
+      if (filtroSingolo === 'camilla') {
+        return {
+          dot: 'bg-blue-300',
+          chip: 'bg-blue-50/60 text-blue-700 border border-dashed border-blue-400',
+          isGuest: true,
+        }
+      }
+      return {
+        dot: 'bg-emerald-300',
+        chip: 'bg-emerald-50/60 text-emerald-700 border border-dashed border-emerald-400',
+        isGuest: true,
+      }
+    }
+    // host (o default)
+    if (filtroSingolo === 'camilla') {
+      return { dot: 'bg-blue-500', chip: 'bg-blue-50 text-blue-800 border-blue-200', isGuest: false }
+    }
+    return { dot: 'bg-emerald-500', chip: 'bg-emerald-50 text-emerald-800 border-emerald-200', isGuest: false }
+  }
+
+  // Vista "Entrambi" — logica colori esistente
   const { camilla, giacomo } = profCoinvolti(app)
   if (camilla && giacomo) {
-    return { dot: 'bg-amber-500', chip: 'bg-amber-50 text-amber-800 border-amber-200' }
+    return { dot: 'bg-amber-500', chip: 'bg-amber-50 text-amber-800 border-amber-200', isGuest: false }
   }
   if (giacomo) {
-    return { dot: 'bg-emerald-500', chip: 'bg-emerald-50 text-emerald-800 border-emerald-200' }
+    return { dot: 'bg-emerald-500', chip: 'bg-emerald-50 text-emerald-800 border-emerald-200', isGuest: false }
   }
-  // Camilla (default anche per legacy senza professionista risolto)
-  return { dot: 'bg-blue-500', chip: 'bg-blue-50 text-blue-800 border-blue-200' }
+  return { dot: 'bg-blue-500', chip: 'bg-blue-50 text-blue-800 border-blue-200', isGuest: false }
 }
 
 const LEGENDA = [
@@ -61,11 +99,12 @@ const LEGENDA = [
 interface GiornataSidebarProps {
   data: Date
   appuntamenti: Appuntamento[]
+  filtroSingolo: 'camilla' | 'giacomo' | null
   onSeleziona: (app: Appuntamento) => void
   onChiudi: () => void
 }
 
-function GiornataSidebar({ data, appuntamenti, onSeleziona, onChiudi }: GiornataSidebarProps) {
+function GiornataSidebar({ data, appuntamenti, filtroSingolo, onSeleziona, onChiudi }: GiornataSidebarProps) {
   const oreVisibili = Array.from({ length: 13 }, (_, i) => i + 8) // 8-20
 
   const formatOra = (h: number) => `${String(h).padStart(2, '0')}:00`
@@ -107,19 +146,29 @@ function GiornataSidebar({ data, appuntamenti, onSeleziona, onChiudi }: Giornata
                 <span className="text-xs text-gray-300">{formatOra(h)}</span>
               </div>
               <div className="flex-1 p-1.5 space-y-1">
-                {apps.map((app) => (
+                {apps.map((app) => {
+                  const colori = getColoriApp(app, filtroSingolo)
+                  return (
                   <button
                     key={app.id}
                     onClick={() => onSeleziona(app)}
                     className={clsx(
                       'w-full text-left px-2.5 py-2 rounded-lg border text-xs font-medium transition-all hover:shadow-soft',
-                      getColoriApp(app).chip
+                      colori.chip
                     )}
                   >
-                    <p className="font-semibold truncate">{app.cliente_nome}</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-semibold truncate">{app.cliente_nome}</p>
+                      {colori.isGuest && (
+                        <span className="text-[9px] uppercase tracking-wider opacity-80 px-1.5 py-0.5 rounded-full border border-current">
+                          ospite
+                        </span>
+                      )}
+                    </div>
                     <p className="opacity-70">{app.ora_inizio} – {app.ora_fine}</p>
                   </button>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )
@@ -164,6 +213,10 @@ export default function Calendar() {
     if (!camillaSelezionata && giacomoSelezionato) return 'giacomo'
     return 'nessuno'
   })()
+
+  // Filtro singolo: indica quale prof è l'unico selezionato (null se entrambi o nessuno)
+  const filtroSingolo: 'camilla' | 'giacomo' | null =
+    professionistaParam === 'camilla' || professionistaParam === 'giacomo' ? professionistaParam : null
 
   const caricaAppuntamenti = useCallback(async () => {
     setLoading(true)
@@ -310,7 +363,7 @@ export default function Calendar() {
 
                 <div className="space-y-0.5 flex-1">
                   {apps.slice(0, 3).map((app) => {
-                    const colori = getColoriApp(app)
+                    const colori = getColoriApp(app, filtroSingolo)
                     return (
                       <div
                         key={app.id}
@@ -320,7 +373,10 @@ export default function Calendar() {
                         )}
                       >
                         <div className={clsx('w-1.5 h-1.5 rounded-full flex-shrink-0', colori.dot)} />
-                        <span className="truncate font-medium">{app.ora_inizio} {app.cliente_nome.split(' ')[0]}</span>
+                        <span className="truncate font-medium">
+                          {app.ora_inizio} {app.cliente_nome.split(' ')[0]}
+                          {colori.isGuest && <span className="ml-1 opacity-70">·ospite</span>}
+                        </span>
                       </div>
                     )
                   })}
@@ -339,6 +395,7 @@ export default function Calendar() {
         <GiornataSidebar
           data={giornoSelezionato}
           appuntamenti={appGiornoSelezionato}
+          filtroSingolo={filtroSingolo}
           onSeleziona={setAppSelezionato}
           onChiudi={() => setGiornoSelezionato(null)}
         />
