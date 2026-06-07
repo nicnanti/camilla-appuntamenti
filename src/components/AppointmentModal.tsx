@@ -2,7 +2,9 @@
 
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import type { Appuntamento } from '@/types'
+import AddressAutocomplete from './AddressAutocomplete'
+import InvitatiPicker from './InvitatiPicker'
+import type { Appuntamento, Invitato } from '@/types'
 import clsx from 'clsx'
 
 interface Props {
@@ -22,6 +24,8 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
     data: appuntamento.data,
     ora_inizio: appuntamento.ora_inizio,
     ora_fine: appuntamento.ora_fine,
+    indirizzo: appuntamento.indirizzo ?? '',
+    invitati: appuntamento.invitati ?? [],
   })
 
   const aggiorna = async () => {
@@ -187,8 +191,22 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
               {appuntamento.cliente_telefono && (
                 <InfoRiga label="Telefono" valore={appuntamento.cliente_telefono} />
               )}
+              <InfoRiga label="Indirizzo" valore={appuntamento.indirizzo || '—'} />
               {appuntamento.guests && (
                 <InfoRiga label="Guest" valore={appuntamento.guests} />
+              )}
+              {appuntamento.invitati && appuntamento.invitati.length > 0 && (
+                <div>
+                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-1.5">Invitati</p>
+                  <div className="space-y-1">
+                    {appuntamento.invitati.map((inv, i) => (
+                      <div key={`${inv.telefono}-${i}`} className="text-sm text-[#1A1A1A] flex justify-between gap-2">
+                        <span className="font-medium truncate">{inv.nome}</span>
+                        {inv.telefono && <span className="text-gray-500">{inv.telefono}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
               <InfoRiga label="Stato" valore={appuntamento.stato} />
               {appuntamento.note && (
@@ -225,6 +243,23 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
                   className="input-field"
                   value={form.cliente_telefono}
                   onChange={(e) => setForm({ ...form, cliente_telefono: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1.5">Indirizzo</label>
+                <div className="input-field !p-0 !border-0 !bg-transparent">
+                  <AddressAutocomplete
+                    value={form.indirizzo}
+                    onChange={(v) => setForm((prev) => ({ ...prev, indirizzo: v }))}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1.5">Invitati</label>
+                <InvitatiPicker
+                  invitati={form.invitati}
+                  onAggiungi={(inv: Invitato) => setForm((prev) => ({ ...prev, invitati: [...prev.invitati, inv] }))}
+                  onRimuovi={(idx) => setForm((prev) => ({ ...prev, invitati: prev.invitati.filter((_, i) => i !== idx) }))}
                 />
               </div>
               <div>

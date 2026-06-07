@@ -327,29 +327,41 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    // ── Email .ics aggiornato a tutti i guest ─────────────────────────────────
-    if (ics_uid && guestsField) {
+    // ── Email .ics aggiornato a tutti i guest + invitati con email ───────────
+    if (ics_uid) {
+      const datiIcs = {
+        cliente_nome:     datiAggiornamento.cliente_nome ?? '',
+        cliente_telefono: datiAggiornamento.cliente_telefono ?? '',
+        note:             datiAggiornamento.note ?? '',
+        data:             datiAggiornamento.data ?? '',
+        ora_inizio:       datiAggiornamento.ora_inizio ?? '',
+        ora_fine:         datiAggiornamento.ora_fine ?? '',
+        professionistaNome: profField ?? '',
+        icsUid: ics_uid,
+        icsSequence: nuovaSequence,
+      }
+
+      // 1) Guest professionisti/assistenti (campo guests = email comma-separated)
       const guestEmails: string[] = typeof guestsField === 'string'
         ? guestsField.split(',').map((e: string) => e.trim()).filter(Boolean)
         : []
       for (const email of guestEmails) {
         try {
-          await inviaModificaCalendario(
-            {
-              cliente_nome: datiAggiornamento.cliente_nome ?? '',
-              cliente_telefono: datiAggiornamento.cliente_telefono ?? '',
-              note: datiAggiornamento.note ?? '',
-              data: datiAggiornamento.data ?? '',
-              ora_inizio: datiAggiornamento.ora_inizio ?? '',
-              ora_fine: datiAggiornamento.ora_fine ?? '',
-              professionistaNome: profField ?? '',
-              icsUid: ics_uid,
-              icsSequence: nuovaSequence,
-            },
-            email
-          )
+          await inviaModificaCalendario(datiIcs, email)
         } catch (err) {
           console.error(`Errore invio modifica .ics a ${email}:`, err)
+        }
+      }
+
+      // 2) Invitati extra con email (dal body 'invitati' o dal record aggiornato)
+      const invitatiPatch: Array<{ nome: string; telefono: string; email?: string }> =
+        Array.isArray(datiAggiornamento.invitati) ? datiAggiornamento.invitati : (appuntamento.invitati ?? [])
+      for (const inv of invitatiPatch) {
+        if (!inv.email) continue
+        try {
+          await inviaModificaCalendario(datiIcs, inv.email)
+        } catch (err) {
+          console.error(`Errore invio modifica .ics a invitato ${inv.email}:`, err)
         }
       }
     }
