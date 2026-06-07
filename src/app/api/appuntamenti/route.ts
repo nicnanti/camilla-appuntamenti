@@ -305,7 +305,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const nuovaSequence = (ics_sequence ?? 0) + 1
-    const reminderReset = orarioCambiato ? { reminder_sent: false, reminder_sent_at: '' } : {}
+    const reminderReset = orarioCambiato ? { reminder_sent: false, reminder_sent_at: null } : {}
 
     const appuntamento = await aggiornaAppuntamento(id, {
       ...datiAggiornamento,

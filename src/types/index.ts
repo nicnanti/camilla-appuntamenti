@@ -21,7 +21,7 @@ export interface Appuntamento {
   indirizzo?: string                 // luogo dell'appuntamento (Via, Comune, Provincia)
   invitati?: Invitato[]              // invitati extra dalla tabella Contatti (JSON nel campo Airtable "invitati")
   reminder_sent: boolean
-  reminder_sent_at?: string
+  reminder_sent_at?: string | null   // null = reset esplicito (clear su Airtable)
   stato: StatoAppuntamento
   ics_uid?: string
   ics_sequence?: number

@@ -26,6 +26,16 @@ function stringifyInvitati(invitati?: Invitato[]): string {
   return JSON.stringify(invitati)
 }
 
+// I campi Date di Airtable non accettano stringa vuota: causa 422 INVALID_VALUE_FOR_COLUMN.
+// undefined o ''  → omette (no-op);
+// null            → svuota il campo lato Airtable;
+// stringa valida  → imposta normalmente.
+function assegnaCampoData(campi: Record<string, unknown>, key: string, value: unknown): void {
+  if (value === undefined) return
+  if (value === '') return
+  campi[key] = value
+}
+
 function parseGcalEntry(gcalId: string): GcalEntry | null {
   if (!gcalId) return null
   try {
@@ -157,22 +167,22 @@ export async function aggiornaAppuntamento(
   id: string,
   dati: Partial<Omit<Appuntamento, 'id' | 'created_at'>>
 ): Promise<Appuntamento> {
-  const campi: Airtable.FieldSet = {}
+  const campi: Record<string, unknown> = {}
   if (dati.cliente_nome !== undefined) campi.cliente_nome = dati.cliente_nome
   if (dati.cliente_telefono !== undefined) campi.cliente_telefono = dati.cliente_telefono
-  if (dati.data !== undefined) campi.data = dati.data
+  assegnaCampoData(campi, 'data', dati.data)
   if (dati.ora_inizio !== undefined) campi.ora_inizio = dati.ora_inizio
   if (dati.ora_fine !== undefined) campi.ora_fine = dati.ora_fine
   if (dati.note !== undefined) campi.note = dati.note
   if (dati.google_calendar_event_id !== undefined) campi.google_calendar_event_id = dati.google_calendar_event_id
   if (dati.reminder_sent !== undefined) campi.reminder_sent = dati.reminder_sent
-  if (dati.reminder_sent_at !== undefined) campi.reminder_sent_at = dati.reminder_sent_at
+  assegnaCampoData(campi, 'reminder_sent_at', dati.reminder_sent_at)
   if (dati.stato !== undefined) campi.stato = dati.stato
   if (dati.ics_uid !== undefined) campi.ics_uid = dati.ics_uid
   if (dati.ics_sequence !== undefined) campi.ics_sequence = dati.ics_sequence
   if (dati.invitati !== undefined) campi.invitati = stringifyInvitati(dati.invitati)
 
-  const record = await tabellaAppuntamenti.update(id, campi)
+  const record = await tabellaAppuntamenti.update(id, campi as Airtable.FieldSet)
   return mappaAppuntamento(record)
 }
 
@@ -211,21 +221,21 @@ export async function aggiornaProssimoAppuntamentoByGcalId(
     .all()
   if (records.length === 0) return
 
-  const campi: Airtable.FieldSet = {}
+  const campi: Record<string, unknown> = {}
   if (dati.cliente_nome !== undefined) campi.cliente_nome = dati.cliente_nome
   if (dati.cliente_telefono !== undefined) campi.cliente_telefono = dati.cliente_telefono
-  if (dati.data !== undefined) campi.data = dati.data
+  assegnaCampoData(campi, 'data', dati.data)
   if (dati.ora_inizio !== undefined) campi.ora_inizio = dati.ora_inizio
   if (dati.ora_fine !== undefined) campi.ora_fine = dati.ora_fine
   if (dati.note !== undefined) campi.note = dati.note
   if (dati.reminder_sent !== undefined) campi.reminder_sent = dati.reminder_sent
-  if (dati.reminder_sent_at !== undefined) campi.reminder_sent_at = dati.reminder_sent_at
+  assegnaCampoData(campi, 'reminder_sent_at', dati.reminder_sent_at)
   if (dati.stato !== undefined) campi.stato = dati.stato
   if (dati.ics_uid !== undefined) campi.ics_uid = dati.ics_uid
   if (dati.ics_sequence !== undefined) campi.ics_sequence = dati.ics_sequence
   if (dati.invitati !== undefined) campi.invitati = stringifyInvitati(dati.invitati)
 
-  await tabellaProssimiAppuntamenti.update(records[0].id, campi)
+  await tabellaProssimiAppuntamenti.update(records[0].id, campi as Airtable.FieldSet)
 }
 
 export async function eliminaProssimoAppuntamentoByGcalId(gcalId: string): Promise<void> {
