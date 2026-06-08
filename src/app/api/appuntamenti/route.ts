@@ -107,14 +107,17 @@ function chiaviProfDalGcalId(gcalId?: string): Set<string> {
   return new Set()
 }
 
-// GET /api/appuntamenti?mese=YYYY-MM&professionista=camilla|giacomo|nessuno
+// GET /api/appuntamenti?mese=YYYY-MM | ?inizio=YYYY-MM-DD&fine=YYYY-MM-DD [&professionista=camilla|giacomo|nessuno]
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const mese = searchParams.get('mese') ?? undefined
-    const prof = (searchParams.get('professionista') ?? '').toLowerCase()
-    const appuntamenti = await getAppuntamenti(mese)
-    console.log(`[GET /api/appuntamenti] mese=${mese ?? '*'} prof=${prof || '*'} → letti da Airtable: ${appuntamenti.length}`)
+    const mese   = searchParams.get('mese') ?? undefined
+    const inizio = searchParams.get('inizio') ?? undefined
+    const fine   = searchParams.get('fine') ?? undefined
+    const prof   = (searchParams.get('professionista') ?? '').toLowerCase()
+    const appuntamenti = await getAppuntamenti({ mese, inizio, fine })
+    const range = inizio && fine ? `${inizio}→${fine}` : (mese ?? '*')
+    console.log(`[GET /api/appuntamenti] range=${range} prof=${prof || '*'} → letti da Airtable: ${appuntamenti.length}`)
 
     if (prof === 'nessuno') {
       console.log(`[GET /api/appuntamenti] filtro=nessuno → restituiti: 0`)

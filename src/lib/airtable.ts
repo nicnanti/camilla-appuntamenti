@@ -119,13 +119,24 @@ function mappaContatto(record: Airtable.Record<Airtable.FieldSet>): Contatto {
 
 // ─── Appuntamenti ─────────────────────────────────────────────────────────────
 
-export async function getAppuntamenti(filtroMese?: string): Promise<Appuntamento[]> {
+export async function getAppuntamenti(
+  opts?: string | { mese?: string; inizio?: string; fine?: string },
+): Promise<Appuntamento[]> {
+  // Backward-compat: stringa → { mese }
+  const o = typeof opts === 'string' ? { mese: opts } : (opts ?? {})
+
   const records = await tabellaAppuntamenti
     .select({ sort: [{ field: 'data', direction: 'asc' }, { field: 'ora_inizio', direction: 'asc' }] })
     .all()
 
   const appuntamenti = records.map(mappaAppuntamento)
-  if (filtroMese) return appuntamenti.filter((a) => a.data.startsWith(filtroMese))
+
+  if (o.inizio && o.fine) {
+    return appuntamenti.filter((a) => a.data >= o.inizio! && a.data <= o.fine!)
+  }
+  if (o.mese) {
+    return appuntamenti.filter((a) => a.data.startsWith(o.mese!))
+  }
   return appuntamenti
 }
 
