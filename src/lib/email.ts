@@ -76,6 +76,10 @@ function getTransporter() {
   return nodemailer.createTransport({
     service: 'gmail',
     auth: { user, pass },
+    // Senza questi, una connessione SMTP fallita resta appesa ~120s (default Node)
+    connectionTimeout: 10_000,
+    greetingTimeout:   10_000,
+    socketTimeout:     10_000,
   })
 }
 

@@ -192,7 +192,9 @@ export async function eliminaAppuntamento(id: string): Promise<void> {
 
 // ─── Prossimi Appuntamenti ────────────────────────────────────────────────────
 
-export async function creaProssimoAppuntamento(app: Appuntamento): Promise<void> {
+export async function creaProssimoAppuntamento(
+  app: Omit<Appuntamento, 'id' | 'created_at' | 'reminder_sent' | 'stato'>,
+): Promise<void> {
   await tabellaProssimiAppuntamenti.create({
     cliente_nome: app.cliente_nome,
     cliente_telefono: app.cliente_telefono,
@@ -203,8 +205,8 @@ export async function creaProssimoAppuntamento(app: Appuntamento): Promise<void>
     google_calendar_event_id: app.google_calendar_event_id ?? '',
     host: app.host ?? '',
     guests: app.guests ?? '',
-    reminder_sent: app.reminder_sent,
-    stato: app.stato,
+    reminder_sent: false,
+    stato: 'Confermato',
     ics_uid: app.ics_uid ?? '',
     ics_sequence: app.ics_sequence ?? 0,
     invitati: stringifyInvitati(app.invitati),

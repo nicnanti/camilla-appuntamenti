@@ -195,33 +195,34 @@ export async function POST(request: NextRequest) {
       note: note ?? '',
     }
 
-    // ── Google Calendar: professionista principale + guest professionisti ────────
+    const tStart = Date.now()
+
+    // ── Google Calendar: tutti i professionisti coinvolti in PARALLELO ────────
+    const tGcal = Date.now()
+    const destinatari = [prof, ...guestList.filter((g) => PROFESSIONISTI.has(g) && g !== prof)]
+    const eventResults = await Promise.all(
+      destinatari.map(async (dest) => {
+        const t = Date.now()
+        try {
+          const eventId = await creaEventoCalendar(appData, getCalendarIdForProfessionista(dest), prof)
+          console.log(`[TIMING] GCal ${dest}: ${Date.now() - t}ms`)
+          return { dest, eventId }
+        } catch (err) {
+          console.error(`Errore Google Calendar (${dest}):`, err)
+          return { dest, eventId: '' }
+        }
+      })
+    )
     const calendarEventsMap: Record<string, string> = {}
-
-    // Professionista principale
-    try {
-      const eventId = await creaEventoCalendar(appData, getCalendarIdForProfessionista(prof), prof)
-      if (eventId) calendarEventsMap[prof.toLowerCase()] = eventId
-    } catch (err) {
-      console.error('Errore creazione evento Google Calendar (professionista principale):', err)
+    for (const r of eventResults) {
+      if (r.eventId) calendarEventsMap[r.dest.toLowerCase()] = r.eventId
     }
+    const gcalIdToStore = Object.keys(calendarEventsMap).length > 0 ? JSON.stringify(calendarEventsMap) : ''
+    console.log(`[TIMING] Google Calendar totale (${destinatari.length} eventi paralleli): ${Date.now() - tGcal}ms`)
 
-    // Guest professionisti
-    for (const g of guestList.filter((g) => PROFESSIONISTI.has(g) && g !== prof)) {
-      try {
-        const eventId = await creaEventoCalendar(appData, getCalendarIdForProfessionista(g), prof)
-        if (eventId) calendarEventsMap[g.toLowerCase()] = eventId
-      } catch (err) {
-        console.error(`Errore creazione evento Google Calendar (guest ${g}):`, err)
-      }
-    }
-
-    const gcalIdToStore = Object.keys(calendarEventsMap).length > 0
-      ? JSON.stringify(calendarEventsMap)
-      : ''
-
-    // ── Airtable ──────────────────────────────────────────────────────────────
-    const appuntamento = await creaAppuntamento({
+    // ── Airtable: ENTRAMBE le tabelle in PARALLELO ────────────────────────────
+    const tAt = Date.now()
+    const datiCondivisi = {
       cliente_nome,
       cliente_telefono: cliente_telefono ?? '',
       data,
@@ -234,44 +235,44 @@ export async function POST(request: NextRequest) {
       ics_uid: icsUid,
       ics_sequence: 0,
       invitati: invitatiList,
-    })
+    }
+    const [appuntamento] = await Promise.all([
+      creaAppuntamento(datiCondivisi),
+      creaProssimoAppuntamento(datiCondivisi)
+        .then(() => console.log(`[POST] ✓ Prossimi Appuntamenti — record creato per ${cliente_nome}`))
+        .catch((err) => {
+          const msg = err instanceof Error ? err.message : String(err)
+          console.error(`[POST] ✗ ERRORE Prossimi Appuntamenti: ${msg}`)
+          console.error(`  → Il reminder WhatsApp non partirà finché non viene corretto.`)
+          console.error(`  → Verifica che la tabella Prossimi Appuntamenti abbia: invitati, ics_uid, ics_sequence, reminder_sent_at, host, guests.`)
+        }),
+    ])
+    console.log(`[TIMING] Airtable (entrambe tabelle, parallelo): ${Date.now() - tAt}ms`)
 
-    try {
-      await creaProssimoAppuntamento(appuntamento)
-      console.log(`[POST /api/appuntamenti] ✓ Prossimi Appuntamenti — record creato per ${appuntamento.cliente_nome}`)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      console.error(`[POST /api/appuntamenti] ✗ ERRORE CRITICO Prossimi Appuntamenti (creazione): ${msg}`)
-      console.error(`  → Il reminder WhatsApp non partirà per questo appuntamento finché non viene corretto.`)
-      console.error(`  → Verifica che la tabella "Prossimi Appuntamenti" (tblS4JJw5IdVbaOmT) abbia TUTTI i campi: invitati, ics_uid, ics_sequence, reminder_sent_at, host, guests.`)
-      console.error(`  Dati inviati:`, JSON.stringify(appuntamento, null, 2))
+    // ── Email .ics: FIRE-AND-FORGET — non blocca la risposta ──────────────────
+    const datiIcs = { cliente_nome, cliente_telefono: cliente_telefono ?? '', note: note ?? '', data, ora_inizio, ora_fine, professionistaNome: prof, icsUid, icsSequence: 0 }
+    const destEmail = [
+      ...guestEmails,
+      ...invitatiList.filter((inv) => inv.email).map((inv) => inv.email as string),
+    ]
+    if (destEmail.length > 0) {
+      const tEmail = Date.now()
+      // NON awaited — parte in background, l'endpoint risponde subito
+      Promise.allSettled(
+        destEmail.map((email) => inviaInvitoCalendario(datiIcs, email))
+      ).then((risultati) => {
+        const ok = risultati.filter((r) => r.status === 'fulfilled').length
+        console.log(`[TIMING] Email .ics (background): ${Date.now() - tEmail}ms — ${ok}/${destEmail.length} inviate`)
+        risultati.forEach((r, i) => {
+          if (r.status === 'rejected') {
+            const msg = r.reason instanceof Error ? r.reason.message : String(r.reason)
+            console.error(`  ✗ .ics a ${destEmail[i]}: ${msg}`)
+          }
+        })
+      })
     }
 
-    // ── Email .ics: tutti i guest ─────────────────────────────────────────────
-    for (const email of guestEmails) {
-      try {
-        await inviaInvitoCalendario(
-          { cliente_nome, cliente_telefono: cliente_telefono ?? '', note: note ?? '', data, ora_inizio, ora_fine, professionistaNome: prof, icsUid, icsSequence: 0 },
-          email
-        )
-      } catch (err) {
-        console.error(`Errore invio .ics a ${email}:`, err)
-      }
-    }
-
-    // ── Email .ics: invitati con indirizzo email ──────────────────────────────
-    for (const inv of invitatiList) {
-      if (!inv.email) continue
-      try {
-        await inviaInvitoCalendario(
-          { cliente_nome, cliente_telefono: cliente_telefono ?? '', note: note ?? '', data, ora_inizio, ora_fine, professionistaNome: prof, icsUid, icsSequence: 0 },
-          inv.email
-        )
-      } catch (err) {
-        console.error(`Errore invio .ics a invitato ${inv.email}:`, err)
-      }
-    }
-
+    console.log(`[TIMING] POST totale (escluse email async): ${Date.now() - tStart}ms`)
     return NextResponse.json(appuntamento, { status: 201 })
   } catch (error) {
     console.error('Errore POST /api/appuntamenti:', error)
