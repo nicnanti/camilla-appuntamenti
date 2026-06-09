@@ -83,6 +83,60 @@ function getTransporter() {
   })
 }
 
+// ─── Logging helper ──────────────────────────────────────────────────────────
+
+interface NodemailerErr {
+  message?: string
+  code?: string
+  command?: string
+  response?: string
+  responseCode?: number
+}
+
+function logEmailError(tag: string, destinatario: string, err: unknown): void {
+  const e = (err ?? {}) as NodemailerErr
+  console.error(`[Email] ✗ ${tag} → ${destinatario}`)
+  console.error(`  code:         ${e.code ?? '(none)'}`)
+  console.error(`  command:      ${e.command ?? '(none)'}`)
+  console.error(`  responseCode: ${e.responseCode ?? '(none)'}`)
+  console.error(`  response:     ${e.response ?? '(none)'}`)
+  console.error(`  message:      ${e.message ?? String(err)}`)
+}
+
+// ─── Connection verify ───────────────────────────────────────────────────────
+
+export async function verificaSmtp(): Promise<{ ok: boolean; error?: string }> {
+  const transporter = getTransporter()
+  if (!transporter) return { ok: false, error: 'GMAIL_USER/GMAIL_APP_PASSWORD non configurati' }
+  try {
+    await transporter.verify()
+    return { ok: true }
+  } catch (err) {
+    const e = (err ?? {}) as NodemailerErr
+    const summary = [e.code, e.responseCode, e.message ?? String(err)].filter(Boolean).join(' | ')
+    return { ok: false, error: summary }
+  }
+}
+
+export async function inviaEmailTest(destinatario: string): Promise<{ ok: boolean; error?: string }> {
+  const transporter = getTransporter()
+  if (!transporter) return { ok: false, error: 'GMAIL_USER/GMAIL_APP_PASSWORD non configurati' }
+  try {
+    const info = await transporter.sendMail({
+      from: `"Studio Ghisleni" <${process.env.GMAIL_USER}>`,
+      to: destinatario,
+      subject: 'Test SMTP — Studio Ghisleni',
+      text: 'Se ricevi questa email, il transporter SMTP funziona.',
+    })
+    console.log('[Email] Test send OK →', destinatario, '| messageId:', info.messageId)
+    return { ok: true }
+  } catch (err) {
+    logEmailError('TEST', destinatario, err)
+    const e = (err ?? {}) as NodemailerErr
+    return { ok: false, error: [e.code, e.responseCode, e.message ?? String(err)].filter(Boolean).join(' | ') }
+  }
+}
+
 // ─── Funzioni pubbliche ───────────────────────────────────────────────────────
 
 export async function inviaInvitoCalendario(
@@ -99,20 +153,24 @@ export async function inviaInvitoCalendario(
   const dataIt = formatDataItaliano(dati.data)
   const from = `"Studio Ghisleni" <${process.env.GMAIL_USER}>`
 
-  await transporter.sendMail({
-    from,
-    to: emailAssistente,
-    subject: `Nuovo appuntamento: ${dati.cliente_nome} — ${dataIt} ore ${dati.ora_inizio}`,
-    text: `Nuovo appuntamento\nCliente: ${dati.cliente_nome}\nData: ${dataIt}\nOra: ${dati.ora_inizio} - ${dati.ora_fine}\nProfessionista: ${dati.professionistaNome}`,
-    html: `<h3>Nuovo appuntamento</h3><p><strong>Cliente:</strong> ${dati.cliente_nome}</p><p><strong>Data:</strong> ${dataIt}</p><p><strong>Ora:</strong> ${dati.ora_inizio} - ${dati.ora_fine}</p><p><strong>Professionista:</strong> ${dati.professionistaNome}</p>`,
-    icalEvent: {
-      filename: 'invite.ics',
-      method: 'REQUEST',
-      content: icsContent,
-    },
-  })
-
-  console.log('[Email] Invito inviato a', emailAssistente)
+  try {
+    const info = await transporter.sendMail({
+      from,
+      to: emailAssistente,
+      subject: `Nuovo appuntamento: ${dati.cliente_nome} — ${dataIt} ore ${dati.ora_inizio}`,
+      text: `Nuovo appuntamento\nCliente: ${dati.cliente_nome}\nData: ${dataIt}\nOra: ${dati.ora_inizio} - ${dati.ora_fine}\nProfessionista: ${dati.professionistaNome}`,
+      html: `<h3>Nuovo appuntamento</h3><p><strong>Cliente:</strong> ${dati.cliente_nome}</p><p><strong>Data:</strong> ${dataIt}</p><p><strong>Ora:</strong> ${dati.ora_inizio} - ${dati.ora_fine}</p><p><strong>Professionista:</strong> ${dati.professionistaNome}</p>`,
+      icalEvent: {
+        filename: 'invite.ics',
+        method: 'REQUEST',
+        content: icsContent,
+      },
+    })
+    console.log(`[Email] ✓ INVITO → ${emailAssistente} | messageId: ${info.messageId}`)
+  } catch (err) {
+    logEmailError('INVITO', emailAssistente, err)
+    throw err
+  }
 }
 
 export async function inviaModificaCalendario(
@@ -129,20 +187,24 @@ export async function inviaModificaCalendario(
   const dataIt = formatDataItaliano(dati.data)
   const from = `"Studio Ghisleni" <${process.env.GMAIL_USER}>`
 
-  await transporter.sendMail({
-    from,
-    to: emailAssistente,
-    subject: `Appuntamento aggiornato: ${dati.cliente_nome} — ${dataIt} ore ${dati.ora_inizio}`,
-    text: `Appuntamento aggiornato\nCliente: ${dati.cliente_nome}\nData: ${dataIt}\nOra: ${dati.ora_inizio} - ${dati.ora_fine}\nProfessionista: ${dati.professionistaNome}`,
-    html: `<h3>Appuntamento aggiornato</h3><p><strong>Cliente:</strong> ${dati.cliente_nome}</p><p><strong>Data:</strong> ${dataIt}</p><p><strong>Ora:</strong> ${dati.ora_inizio} - ${dati.ora_fine}</p><p><strong>Professionista:</strong> ${dati.professionistaNome}</p>`,
-    icalEvent: {
-      filename: 'invite.ics',
-      method: 'REQUEST',
-      content: icsContent,
-    },
-  })
-
-  console.log('[Email] Modifica inviata a', emailAssistente)
+  try {
+    const info = await transporter.sendMail({
+      from,
+      to: emailAssistente,
+      subject: `Appuntamento aggiornato: ${dati.cliente_nome} — ${dataIt} ore ${dati.ora_inizio}`,
+      text: `Appuntamento aggiornato\nCliente: ${dati.cliente_nome}\nData: ${dataIt}\nOra: ${dati.ora_inizio} - ${dati.ora_fine}\nProfessionista: ${dati.professionistaNome}`,
+      html: `<h3>Appuntamento aggiornato</h3><p><strong>Cliente:</strong> ${dati.cliente_nome}</p><p><strong>Data:</strong> ${dataIt}</p><p><strong>Ora:</strong> ${dati.ora_inizio} - ${dati.ora_fine}</p><p><strong>Professionista:</strong> ${dati.professionistaNome}</p>`,
+      icalEvent: {
+        filename: 'invite.ics',
+        method: 'REQUEST',
+        content: icsContent,
+      },
+    })
+    console.log(`[Email] ✓ MODIFICA → ${emailAssistente} | messageId: ${info.messageId}`)
+  } catch (err) {
+    logEmailError('MODIFICA', emailAssistente, err)
+    throw err
+  }
 }
 
 export async function inviaCancellazioneCalendario(
@@ -159,18 +221,22 @@ export async function inviaCancellazioneCalendario(
   const dataIt = formatDataItaliano(dati.data)
   const from = `"Studio Ghisleni" <${process.env.GMAIL_USER}>`
 
-  await transporter.sendMail({
-    from,
-    to: emailAssistente,
-    subject: `Appuntamento cancellato: ${dati.cliente_nome} — ${dataIt} ore ${dati.ora_inizio}`,
-    text: `Appuntamento cancellato\nCliente: ${dati.cliente_nome}\nData: ${dataIt}\nOra: ${dati.ora_inizio} - ${dati.ora_fine}\nProfessionista: ${dati.professionistaNome}`,
-    html: `<h3>Appuntamento cancellato</h3><p><strong>Cliente:</strong> ${dati.cliente_nome}</p><p><strong>Data:</strong> ${dataIt}</p><p><strong>Ora:</strong> ${dati.ora_inizio} - ${dati.ora_fine}</p><p><strong>Professionista:</strong> ${dati.professionistaNome}</p>`,
-    icalEvent: {
-      filename: 'invite.ics',
-      method: 'CANCEL',
-      content: icsContent,
-    },
-  })
-
-  console.log('[Email] Cancellazione inviata a', emailAssistente)
+  try {
+    const info = await transporter.sendMail({
+      from,
+      to: emailAssistente,
+      subject: `Appuntamento cancellato: ${dati.cliente_nome} — ${dataIt} ore ${dati.ora_inizio}`,
+      text: `Appuntamento cancellato\nCliente: ${dati.cliente_nome}\nData: ${dataIt}\nOra: ${dati.ora_inizio} - ${dati.ora_fine}\nProfessionista: ${dati.professionistaNome}`,
+      html: `<h3>Appuntamento cancellato</h3><p><strong>Cliente:</strong> ${dati.cliente_nome}</p><p><strong>Data:</strong> ${dataIt}</p><p><strong>Ora:</strong> ${dati.ora_inizio} - ${dati.ora_fine}</p><p><strong>Professionista:</strong> ${dati.professionistaNome}</p>`,
+      icalEvent: {
+        filename: 'invite.ics',
+        method: 'CANCEL',
+        content: icsContent,
+      },
+    })
+    console.log(`[Email] ✓ CANCEL → ${emailAssistente} | messageId: ${info.messageId}`)
+  } catch (err) {
+    logEmailError('CANCEL', emailAssistente, err)
+    throw err
+  }
 }

@@ -292,6 +292,7 @@ export async function PATCH(request: NextRequest) {
     if (!id) return NextResponse.json({ errore: 'ID mancante' }, { status: 400 })
 
     // Rileva se data/ora sono cambiate per resettare reminder
+    const tStart = Date.now()
     let orarioCambiato = false
     try {
       const corrente = await getAppuntamentoById(id)
@@ -300,45 +301,51 @@ export async function PATCH(request: NextRequest) {
         (datiAggiornamento.ora_inizio !== undefined && datiAggiornamento.ora_inizio !== corrente.ora_inizio) ||
         (datiAggiornamento.ora_fine !== undefined && datiAggiornamento.ora_fine !== corrente.ora_fine)
     } catch (err) {
-      console.warn('Impossibile leggere record corrente per confronto orari:', err)
+      console.warn('[PATCH] Impossibile leggere record corrente per confronto orari:', err)
     }
-
-    // ── Google Calendar: aggiorna eventi in tutti i calendari salvati ─────────
-    const entries = parseCalendarEvents(google_calendar_event_id)
-    for (const entry of entries) {
-      try {
-        await aggiornaEventoCalendar(entry.eventId, entry.calendarId, datiAggiornamento)
-      } catch (err) {
-        console.error(`Errore aggiornamento calendario ${entry.nome}:`, err)
-      }
-    }
+    console.log(`[TIMING] PATCH lettura corrente: ${Date.now() - tStart}ms`)
 
     const nuovaSequence = (ics_sequence ?? 0) + 1
     const reminderReset = orarioCambiato ? { reminder_sent: false, reminder_sent_at: null } : {}
+    const entries = parseCalendarEvents(google_calendar_event_id)
 
-    const appuntamento = await aggiornaAppuntamento(id, {
-      ...datiAggiornamento,
-      ...reminderReset,
-      google_calendar_event_id,
-      ics_sequence: nuovaSequence,
-    })
-
-    const primaryEntry = entries[0]
-    if (primaryEntry?.eventId) {
+    // ── Google Calendar: tutti i calendari in PARALLELO ───────────────────────
+    const tGcal = Date.now()
+    await Promise.all(entries.map(async (entry) => {
       try {
-        await aggiornaProssimoAppuntamentoByGcalId(primaryEntry.eventId, {
-          ...datiAggiornamento,
-          ...reminderReset,
-          ics_sequence: nuovaSequence,
-        })
-        console.log(`[PATCH /api/appuntamenti] ✓ Prossimi Appuntamenti — record aggiornato (eventId ${primaryEntry.eventId.slice(0, 10)}…)`)
+        await aggiornaEventoCalendar(entry.eventId, entry.calendarId, datiAggiornamento)
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        console.error(`[PATCH /api/appuntamenti] ✗ ERRORE Prossimi Appuntamenti (aggiornamento): ${msg}`)
+        console.error(`[PATCH] ✗ aggiornaEventoCalendar (${entry.nome}):`, err)
       }
-    }
+    }))
+    console.log(`[TIMING] PATCH GCal (${entries.length} eventi paralleli): ${Date.now() - tGcal}ms`)
 
-    // ── Email .ics aggiornato a tutti i guest + invitati con email ───────────
+    // ── Airtable: ENTRAMBE le tabelle in PARALLELO ────────────────────────────
+    const tAt = Date.now()
+    const primaryEntry = entries[0]
+    const [appuntamento] = await Promise.all([
+      aggiornaAppuntamento(id, {
+        ...datiAggiornamento,
+        ...reminderReset,
+        google_calendar_event_id,
+        ics_sequence: nuovaSequence,
+      }),
+      primaryEntry?.eventId
+        ? aggiornaProssimoAppuntamentoByGcalId(primaryEntry.eventId, {
+            ...datiAggiornamento,
+            ...reminderReset,
+            ics_sequence: nuovaSequence,
+          })
+            .then(() => console.log(`[PATCH] ✓ Prossimi Appuntamenti aggiornato (eventId ${primaryEntry.eventId.slice(0, 10)}…)`))
+            .catch((err) => {
+              const msg = err instanceof Error ? err.message : String(err)
+              console.error(`[PATCH] ✗ ERRORE Prossimi Appuntamenti: ${msg}`)
+            })
+        : Promise.resolve(),
+    ])
+    console.log(`[TIMING] PATCH Airtable (entrambe tabelle parallelo): ${Date.now() - tAt}ms`)
+
+    // ── Email .ics: FIRE-AND-FORGET ───────────────────────────────────────────
     if (ics_uid) {
       const datiIcs = {
         cliente_nome:     datiAggiornamento.cliente_nome ?? '',
@@ -351,32 +358,23 @@ export async function PATCH(request: NextRequest) {
         icsUid: ics_uid,
         icsSequence: nuovaSequence,
       }
-
-      // 1) Guest professionisti/assistenti (campo guests = email comma-separated)
-      const guestEmails: string[] = typeof guestsField === 'string'
-        ? guestsField.split(',').map((e: string) => e.trim()).filter(Boolean)
-        : []
-      for (const email of guestEmails) {
-        try {
-          await inviaModificaCalendario(datiIcs, email)
-        } catch (err) {
-          console.error(`Errore invio modifica .ics a ${email}:`, err)
-        }
-      }
-
-      // 2) Invitati extra con email (dal body 'invitati' o dal record aggiornato)
-      const invitatiPatch: Array<{ nome: string; telefono: string; email?: string }> =
-        Array.isArray(datiAggiornamento.invitati) ? datiAggiornamento.invitati : (appuntamento.invitati ?? [])
-      for (const inv of invitatiPatch) {
-        if (!inv.email) continue
-        try {
-          await inviaModificaCalendario(datiIcs, inv.email)
-        } catch (err) {
-          console.error(`Errore invio modifica .ics a invitato ${inv.email}:`, err)
-        }
+      const destEmail = [
+        ...(typeof guestsField === 'string' ? guestsField.split(',').map((e: string) => e.trim()).filter(Boolean) : []),
+        ...((Array.isArray(datiAggiornamento.invitati) ? datiAggiornamento.invitati : (appuntamento.invitati ?? []))
+          .filter((inv: { email?: string }) => inv.email)
+          .map((inv: { email?: string }) => inv.email as string)),
+      ]
+      if (destEmail.length > 0) {
+        const tEmail = Date.now()
+        Promise.allSettled(destEmail.map((email) => inviaModificaCalendario(datiIcs, email)))
+          .then((risultati) => {
+            const ok = risultati.filter((r) => r.status === 'fulfilled').length
+            console.log(`[TIMING] PATCH email .ics (background): ${Date.now() - tEmail}ms — ${ok}/${destEmail.length} inviate`)
+          })
       }
     }
 
+    console.log(`[TIMING] PATCH totale (esclusi invii async): ${Date.now() - tStart}ms`)
     return NextResponse.json(appuntamento)
   } catch (error) {
     console.error('Errore PATCH /api/appuntamenti:', error)
@@ -403,35 +401,53 @@ export async function DELETE(request: NextRequest) {
 
     if (!id) return NextResponse.json({ errore: 'ID mancante' }, { status: 400 })
 
-    // ── Google Calendar: cancella eventi in tutti i calendari salvati ─────────
+    const tStart = Date.now()
     const entries = parseCalendarEvents(gcalId ?? undefined)
-    for (const entry of entries) {
+
+    // ── Google Calendar: cancella tutti gli eventi in PARALLELO ───────────────
+    const tGcal = Date.now()
+    await Promise.all(entries.map(async (entry) => {
+      const t = Date.now()
       try {
         await eliminaEventoCalendar(entry.eventId, entry.calendarId)
-      } catch (err) {
-        console.error(`Errore cancellazione calendario ${entry.nome}:`, err)
-      }
-    }
-
-    await eliminaAppuntamento(id)
-
-    const primaryEntry = entries[0]
-    if (primaryEntry?.eventId) {
-      try {
-        await eliminaProssimoAppuntamentoByGcalId(primaryEntry.eventId)
-        console.log(`[DELETE /api/appuntamenti] ✓ Prossimi Appuntamenti — record eliminato (eventId ${primaryEntry.eventId.slice(0, 10)}…)`)
+        console.log(`[DELETE] ✓ GCal ${entry.nome}: ${Date.now() - t}ms`)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        console.error(`[DELETE /api/appuntamenti] ✗ ERRORE Prossimi Appuntamenti (eliminazione): ${msg}`)
+        console.error(`[DELETE] ✗ GCal ${entry.nome}: ${msg}`)
       }
-    }
+    }))
+    console.log(`[TIMING] DELETE GCal (${entries.length} eventi paralleli): ${Date.now() - tGcal}ms`)
 
-    // ── Email .ics cancellazione a tutti i guest ──────────────────────────────
+    // ── Airtable: ENTRAMBE le tabelle in PARALLELO ────────────────────────────
+    const tAt = Date.now()
+    const primaryEntry = entries[0]
+    await Promise.all([
+      eliminaAppuntamento(id)
+        .then(() => console.log(`[DELETE] ✓ Appuntamenti — record eliminato (${id})`))
+        .catch((err) => {
+          const msg = err instanceof Error ? err.message : String(err)
+          console.error(`[DELETE] ✗ Appuntamenti: ${msg}`)
+          throw err
+        }),
+      primaryEntry?.eventId
+        ? eliminaProssimoAppuntamentoByGcalId(primaryEntry.eventId)
+            .then(() => console.log(`[DELETE] ✓ Prossimi Appuntamenti — record eliminato (eventId ${primaryEntry.eventId.slice(0, 10)}…)`))
+            .catch((err) => {
+              const msg = err instanceof Error ? err.message : String(err)
+              console.error(`[DELETE] ✗ Prossimi Appuntamenti: ${msg}`)
+              // non rilanciamo: Prossimi è secondaria
+            })
+        : Promise.resolve(),
+    ])
+    console.log(`[TIMING] DELETE Airtable (entrambe tabelle parallelo): ${Date.now() - tAt}ms`)
+
+    // ── Email .ics cancellazione: FIRE-AND-FORGET ─────────────────────────────
     if (icsUid && guestsParam) {
       const guestEmails = guestsParam.split(',').map((e) => e.trim()).filter(Boolean)
-      for (const email of guestEmails) {
-        try {
-          await inviaCancellazioneCalendario(
+      if (guestEmails.length > 0) {
+        const tEmail = Date.now()
+        Promise.allSettled(guestEmails.map((email) =>
+          inviaCancellazioneCalendario(
             {
               cliente_nome: appData.cliente_nome,
               data: appData.data,
@@ -443,12 +459,14 @@ export async function DELETE(request: NextRequest) {
             },
             email
           )
-        } catch (err) {
-          console.error(`Errore invio cancellazione .ics a ${email}:`, err)
-        }
+        )).then((risultati) => {
+          const ok = risultati.filter((r) => r.status === 'fulfilled').length
+          console.log(`[TIMING] DELETE email .ics CANCEL (background): ${Date.now() - tEmail}ms — ${ok}/${guestEmails.length} inviate`)
+        })
       }
     }
 
+    console.log(`[TIMING] DELETE totale (esclusi invii async): ${Date.now() - tStart}ms`)
     return NextResponse.json({ successo: true })
   } catch (error) {
     console.error('Errore DELETE /api/appuntamenti:', error)
