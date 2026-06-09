@@ -594,8 +594,9 @@ function SettimanaView({ giorni, getAppPerGiorno, isOggi, filtroSingolo, onSelez
                       height: altezzaDaDurata(app.ora_inizio, app.ora_fine),
                     }}
                   >
+                    <p className="text-[11px] opacity-70 leading-tight">{app.ora_inizio}</p>
                     <p className="text-[11px] font-semibold truncate leading-tight">
-                      {app.ora_inizio} {app.cliente_nome.split(' ')[0]}
+                      {app.cliente_nome}
                     </p>
                     {colori.isGuest && (
                       <p className="text-[9px] opacity-70 uppercase tracking-wider">ospite</p>
