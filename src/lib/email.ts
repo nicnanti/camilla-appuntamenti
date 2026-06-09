@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer'
+import type SMTPTransport from 'nodemailer/lib/smtp-transport'
 
 interface DatiAppuntamento {
   cliente_nome: string
@@ -73,14 +74,22 @@ function getTransporter() {
   const user = process.env.GMAIL_USER
   const pass = process.env.GMAIL_APP_PASSWORD
   if (!user || !pass) return null
-  return nodemailer.createTransport({
-    service: 'gmail',
+  // Config esplicita (no `service: 'gmail'`) per controllare host/porta/IP family.
+  // `family` non è tipizzato in SMTPTransport.Options ma viene passato a net.connect a runtime.
+  const opts: SMTPTransport.Options & { family?: 4 | 6 } = {
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
     auth: { user, pass },
     // Senza questi, una connessione SMTP fallita resta appesa ~120s (default Node)
     connectionTimeout: 10_000,
     greetingTimeout:   10_000,
     socketTimeout:     10_000,
-  })
+    // Railway non supporta IPv6 in uscita → forza IPv4 nella risoluzione DNS,
+    // altrimenti la connect fallisce con ENETUNREACH su 2607:f8b0:…:465
+    family: 4,
+  }
+  return nodemailer.createTransport(opts)
 }
 
 // ─── Logging helper ──────────────────────────────────────────────────────────
