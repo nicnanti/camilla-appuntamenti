@@ -16,11 +16,9 @@ import {
   eliminaEventoCalendar,
   getCalendarIdForProfessionista,
 } from '@/lib/google-calendar'
-import {
-  inviaInvitoCalendario,
-  inviaModificaCalendario,
-  inviaCancellazioneCalendario,
-} from '@/lib/email'
+// Gli inviti email partono direttamente da Google Calendar (sendUpdates: 'all').
+// Il modulo '@/lib/email' è mantenuto per /api/test-email diagnostico ma non è
+// più sul percorso critico di POST/PATCH/DELETE.
 
 // Mappa nome → email
 const EMAIL_MAP: Record<string, string> = {
@@ -200,28 +198,22 @@ export async function POST(request: NextRequest) {
 
     const tStart = Date.now()
 
-    // ── Google Calendar: tutti i professionisti coinvolti in PARALLELO ────────
+    // ── Google Calendar: UN solo evento nel calendario dell'host, con attendees ─
+    // Le notifiche email partono da Google stesso (sendUpdates: 'all'), niente più SMTP.
     const tGcal = Date.now()
-    const destinatari = [prof, ...guestList.filter((g) => PROFESSIONISTI.has(g) && g !== prof)]
-    const eventResults = await Promise.all(
-      destinatari.map(async (dest) => {
-        const t = Date.now()
-        try {
-          const eventId = await creaEventoCalendar(appData, getCalendarIdForProfessionista(dest), prof)
-          console.log(`[TIMING] GCal ${dest}: ${Date.now() - t}ms`)
-          return { dest, eventId }
-        } catch (err) {
-          console.error(`Errore Google Calendar (${dest}):`, err)
-          return { dest, eventId: '' }
-        }
-      })
-    )
+    const attendees = [
+      ...guestEmails,                                                                  // guest professionisti + assistenti
+      ...invitatiList.filter((inv) => inv.email).map((inv) => inv.email as string),    // invitati extra con email
+    ]
     const calendarEventsMap: Record<string, string> = {}
-    for (const r of eventResults) {
-      if (r.eventId) calendarEventsMap[r.dest.toLowerCase()] = r.eventId
+    try {
+      const eventId = await creaEventoCalendar(appData, getCalendarIdForProfessionista(prof), prof, attendees)
+      if (eventId) calendarEventsMap[prof.toLowerCase()] = eventId
+    } catch (err) {
+      console.error('[POST] ✗ Google Calendar (host):', err)
     }
     const gcalIdToStore = Object.keys(calendarEventsMap).length > 0 ? JSON.stringify(calendarEventsMap) : ''
-    console.log(`[TIMING] Google Calendar totale (${destinatari.length} eventi paralleli): ${Date.now() - tGcal}ms`)
+    console.log(`[TIMING] Google Calendar (host: ${prof}, attendees: ${attendees.length}): ${Date.now() - tGcal}ms`)
 
     // ── Airtable: ENTRAMBE le tabelle in PARALLELO ────────────────────────────
     const tAt = Date.now()
@@ -252,30 +244,10 @@ export async function POST(request: NextRequest) {
     ])
     console.log(`[TIMING] Airtable (entrambe tabelle, parallelo): ${Date.now() - tAt}ms`)
 
-    // ── Email .ics: FIRE-AND-FORGET — non blocca la risposta ──────────────────
-    const datiIcs = { cliente_nome, cliente_telefono: cliente_telefono ?? '', note: note ?? '', data, ora_inizio, ora_fine, professionistaNome: prof, icsUid, icsSequence: 0 }
-    const destEmail = [
-      ...guestEmails,
-      ...invitatiList.filter((inv) => inv.email).map((inv) => inv.email as string),
-    ]
-    if (destEmail.length > 0) {
-      const tEmail = Date.now()
-      // NON awaited — parte in background, l'endpoint risponde subito
-      Promise.allSettled(
-        destEmail.map((email) => inviaInvitoCalendario(datiIcs, email))
-      ).then((risultati) => {
-        const ok = risultati.filter((r) => r.status === 'fulfilled').length
-        console.log(`[TIMING] Email .ics (background): ${Date.now() - tEmail}ms — ${ok}/${destEmail.length} inviate`)
-        risultati.forEach((r, i) => {
-          if (r.status === 'rejected') {
-            const msg = r.reason instanceof Error ? r.reason.message : String(r.reason)
-            console.error(`  ✗ .ics a ${destEmail[i]}: ${msg}`)
-          }
-        })
-      })
-    }
+    // Gli inviti email partono direttamente da Google Calendar (sendUpdates: 'all')
+    // — niente più SMTP/nodemailer sul percorso critico.
 
-    console.log(`[TIMING] POST totale (escluse email async): ${Date.now() - tStart}ms`)
+    console.log(`[TIMING] POST totale: ${Date.now() - tStart}ms`)
     return NextResponse.json(appuntamento, { status: 201 })
   } catch (error) {
     console.error('Errore POST /api/appuntamenti:', error)
@@ -309,16 +281,35 @@ export async function PATCH(request: NextRequest) {
     const reminderReset = orarioCambiato ? { reminder_sent: false, reminder_sent_at: null } : {}
     const entries = parseCalendarEvents(google_calendar_event_id)
 
+    // Calcola gli attendees aggiornati per l'evento dell'host
+    const guestEmailsPatch: string[] = typeof guestsField === 'string'
+      ? guestsField.split(',').map((e: string) => e.trim()).filter(Boolean)
+      : []
+    const invitatiEmailsPatch: string[] = (Array.isArray(datiAggiornamento.invitati) ? datiAggiornamento.invitati : [])
+      .filter((inv: { email?: string }) => inv.email)
+      .map((inv: { email?: string }) => inv.email as string)
+    const attendeesPatch = [...guestEmailsPatch, ...invitatiEmailsPatch]
+    const hostLower = (profField ?? '').toLowerCase()
+
     // ── Google Calendar: tutti i calendari in PARALLELO ───────────────────────
+    // Attendees passati SOLO all'entry dell'host per evitare doppie notifiche
+    // su record legacy multi-calendario.
     const tGcal = Date.now()
     await Promise.all(entries.map(async (entry) => {
+      const isHost = entry.nome.toLowerCase() === hostLower
       try {
-        await aggiornaEventoCalendar(entry.eventId, entry.calendarId, datiAggiornamento)
+        await aggiornaEventoCalendar(
+          entry.eventId,
+          entry.calendarId,
+          datiAggiornamento,
+          profField,
+          isHost ? attendeesPatch : undefined,
+        )
       } catch (err) {
         console.error(`[PATCH] ✗ aggiornaEventoCalendar (${entry.nome}):`, err)
       }
     }))
-    console.log(`[TIMING] PATCH GCal (${entries.length} eventi paralleli): ${Date.now() - tGcal}ms`)
+    console.log(`[TIMING] PATCH GCal (${entries.length} eventi paralleli, attendees host=${attendeesPatch.length}): ${Date.now() - tGcal}ms`)
 
     // ── Airtable: ENTRAMBE le tabelle in PARALLELO ────────────────────────────
     const tAt = Date.now()
@@ -345,36 +336,10 @@ export async function PATCH(request: NextRequest) {
     ])
     console.log(`[TIMING] PATCH Airtable (entrambe tabelle parallelo): ${Date.now() - tAt}ms`)
 
-    // ── Email .ics: FIRE-AND-FORGET ───────────────────────────────────────────
-    if (ics_uid) {
-      const datiIcs = {
-        cliente_nome:     datiAggiornamento.cliente_nome ?? '',
-        cliente_telefono: datiAggiornamento.cliente_telefono ?? '',
-        note:             datiAggiornamento.note ?? '',
-        data:             datiAggiornamento.data ?? '',
-        ora_inizio:       datiAggiornamento.ora_inizio ?? '',
-        ora_fine:         datiAggiornamento.ora_fine ?? '',
-        professionistaNome: profField ?? '',
-        icsUid: ics_uid,
-        icsSequence: nuovaSequence,
-      }
-      const destEmail = [
-        ...(typeof guestsField === 'string' ? guestsField.split(',').map((e: string) => e.trim()).filter(Boolean) : []),
-        ...((Array.isArray(datiAggiornamento.invitati) ? datiAggiornamento.invitati : (appuntamento.invitati ?? []))
-          .filter((inv: { email?: string }) => inv.email)
-          .map((inv: { email?: string }) => inv.email as string)),
-      ]
-      if (destEmail.length > 0) {
-        const tEmail = Date.now()
-        Promise.allSettled(destEmail.map((email) => inviaModificaCalendario(datiIcs, email)))
-          .then((risultati) => {
-            const ok = risultati.filter((r) => r.status === 'fulfilled').length
-            console.log(`[TIMING] PATCH email .ics (background): ${Date.now() - tEmail}ms — ${ok}/${destEmail.length} inviate`)
-          })
-      }
-    }
+    // Google manda le notifiche di modifica direttamente (sendUpdates: 'all') —
+    // niente più invio email manuale lato SMTP.
 
-    console.log(`[TIMING] PATCH totale (esclusi invii async): ${Date.now() - tStart}ms`)
+    console.log(`[TIMING] PATCH totale: ${Date.now() - tStart}ms`)
     return NextResponse.json(appuntamento)
   } catch (error) {
     console.error('Errore PATCH /api/appuntamenti:', error)
@@ -388,16 +353,6 @@ export async function DELETE(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
     const gcalId = searchParams.get('gcalId')
-    const icsUid = searchParams.get('icsUid') ?? undefined
-    const icsSequence = parseInt(searchParams.get('icsSeq') ?? '0', 10)
-    const guestsParam = searchParams.get('guests') ?? ''
-    const profParam = searchParams.get('prof') ?? ''
-    const appData = {
-      cliente_nome: searchParams.get('nome') ?? '',
-      data: searchParams.get('data') ?? '',
-      ora_inizio: searchParams.get('oraInizio') ?? '',
-      ora_fine: searchParams.get('oraFine') ?? '',
-    }
 
     if (!id) return NextResponse.json({ errore: 'ID mancante' }, { status: 400 })
 
@@ -441,32 +396,10 @@ export async function DELETE(request: NextRequest) {
     ])
     console.log(`[TIMING] DELETE Airtable (entrambe tabelle parallelo): ${Date.now() - tAt}ms`)
 
-    // ── Email .ics cancellazione: FIRE-AND-FORGET ─────────────────────────────
-    if (icsUid && guestsParam) {
-      const guestEmails = guestsParam.split(',').map((e) => e.trim()).filter(Boolean)
-      if (guestEmails.length > 0) {
-        const tEmail = Date.now()
-        Promise.allSettled(guestEmails.map((email) =>
-          inviaCancellazioneCalendario(
-            {
-              cliente_nome: appData.cliente_nome,
-              data: appData.data,
-              ora_inizio: appData.ora_inizio,
-              ora_fine: appData.ora_fine,
-              professionistaNome: profParam,
-              icsUid,
-              icsSequence: icsSequence + 1,
-            },
-            email
-          )
-        )).then((risultati) => {
-          const ok = risultati.filter((r) => r.status === 'fulfilled').length
-          console.log(`[TIMING] DELETE email .ics CANCEL (background): ${Date.now() - tEmail}ms — ${ok}/${guestEmails.length} inviate`)
-        })
-      }
-    }
+    // Google manda le email di cancellazione direttamente agli attendees
+    // (sendUpdates: 'all' su events.delete) — niente più SMTP manuale.
 
-    console.log(`[TIMING] DELETE totale (esclusi invii async): ${Date.now() - tStart}ms`)
+    console.log(`[TIMING] DELETE totale: ${Date.now() - tStart}ms`)
     return NextResponse.json({ successo: true })
   } catch (error) {
     console.error('Errore DELETE /api/appuntamenti:', error)
