@@ -42,7 +42,13 @@ function offsetTopDaOra(orario: string): number {
 
 function altezzaDaDurata(inizio: string, fine: string): number {
   const h = offsetTopDaOra(fine) - offsetTopDaOra(inizio)
-  return Math.max(h, 18) // minimo 18px per leggibilità
+  return Math.max(h, 22) // minimo 22px per stare comoda 1 riga di testo
+}
+
+function durataInMinuti(inizio: string, fine: string): number {
+  const [h1, m1] = inizio.split(':').map(Number)
+  const [h2, m2] = fine.split(':').map(Number)
+  return Math.max(0, (h2 * 60 + m2) - (h1 * 60 + m1))
 }
 
 // Estrae i professionisti coinvolti (Camilla, Giacomo) sia dal campo professionista
@@ -581,12 +587,14 @@ function SettimanaView({ giorni, getAppPerGiorno, isOggi, filtroSingolo, onSelez
               ))}
               {apps.map((app) => {
                 const colori = getColoriApp(app, filtroSingolo)
+                const compatto = durataInMinuti(app.ora_inizio, app.ora_fine) <= 30
                 return (
                   <button
                     key={app.id}
                     onClick={() => onSeleziona(app)}
                     className={clsx(
-                      'absolute left-1 right-1 rounded-md border text-left px-1.5 py-0.5 overflow-hidden hover:shadow-soft transition-shadow',
+                      'absolute left-1 right-1 rounded-md border text-left overflow-hidden hover:shadow-soft transition-shadow',
+                      compatto ? 'px-1 py-px' : 'px-1.5 py-0.5',
                       colori.chip,
                     )}
                     style={{
@@ -594,12 +602,22 @@ function SettimanaView({ giorni, getAppPerGiorno, isOggi, filtroSingolo, onSelez
                       height: altezzaDaDurata(app.ora_inizio, app.ora_fine),
                     }}
                   >
-                    <p className="text-[11px] opacity-70 leading-tight">{app.ora_inizio}</p>
-                    <p className="text-[11px] font-semibold truncate leading-tight">
-                      {app.cliente_nome}
-                    </p>
-                    {colori.isGuest && (
-                      <p className="text-[9px] opacity-70 uppercase tracking-wider">ospite</p>
+                    {compatto ? (
+                      <p className="text-[10px] truncate leading-none whitespace-nowrap">
+                        <span className="opacity-70">{app.ora_inizio}</span>{' '}
+                        <span className="font-semibold">{app.cliente_nome}</span>
+                        {colori.isGuest && <span className="ml-1 text-[9px] opacity-70 uppercase">·osp</span>}
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-[11px] opacity-70 leading-tight truncate">{app.ora_inizio}</p>
+                        <p className="text-[11px] font-semibold truncate leading-tight">
+                          {app.cliente_nome}
+                        </p>
+                        {colori.isGuest && (
+                          <p className="text-[9px] opacity-70 uppercase tracking-wider truncate">ospite</p>
+                        )}
+                      </>
                     )}
                   </button>
                 )
@@ -651,12 +669,14 @@ function GiornoView({ data, appuntamenti, isOggi, filtroSingolo, onSeleziona }: 
           ))}
           {appuntamenti.map((app) => {
             const colori = getColoriApp(app, filtroSingolo)
+            const compatto = durataInMinuti(app.ora_inizio, app.ora_fine) <= 30
             return (
               <button
                 key={app.id}
                 onClick={() => onSeleziona(app)}
                 className={clsx(
-                  'absolute left-2 right-2 rounded-md border text-left px-2 py-1 overflow-hidden hover:shadow-soft transition-shadow',
+                  'absolute left-2 right-2 rounded-md border text-left overflow-hidden hover:shadow-soft transition-shadow',
+                  compatto ? 'px-2 py-0.5' : 'px-2 py-1',
                   colori.chip,
                 )}
                 style={{
@@ -664,11 +684,21 @@ function GiornoView({ data, appuntamenti, isOggi, filtroSingolo, onSeleziona }: 
                   height: altezzaDaDurata(app.ora_inizio, app.ora_fine),
                 }}
               >
-                <p className="text-sm font-semibold truncate leading-tight">
-                  {app.cliente_nome}
-                  {colori.isGuest && <span className="ml-2 text-[10px] opacity-70 uppercase tracking-wider">ospite</span>}
-                </p>
-                <p className="text-xs opacity-70">{app.ora_inizio} – {app.ora_fine}</p>
+                {compatto ? (
+                  <p className="text-xs truncate leading-tight whitespace-nowrap">
+                    <span className="opacity-70 font-normal">{app.ora_inizio}–{app.ora_fine}</span>{' '}
+                    <span className="font-semibold">{app.cliente_nome}</span>
+                    {colori.isGuest && <span className="ml-1.5 text-[10px] opacity-70 uppercase tracking-wider">ospite</span>}
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-sm font-semibold truncate leading-tight">
+                      {app.cliente_nome}
+                      {colori.isGuest && <span className="ml-2 text-[10px] opacity-70 uppercase tracking-wider">ospite</span>}
+                    </p>
+                    <p className="text-xs opacity-70 truncate">{app.ora_inizio} – {app.ora_fine}</p>
+                  </>
+                )}
               </button>
             )
           })}
