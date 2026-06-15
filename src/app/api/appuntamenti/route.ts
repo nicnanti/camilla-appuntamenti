@@ -311,11 +311,21 @@ export async function POST(request: NextRequest) {
       }
       const destinatari = destinatariIcs(host, guestList)
       if (destinatari.length > 0) {
-        Promise.allSettled(destinatari.map((email) => inviaInvitoCalendario(datiIcs, email, host)))
-          .then((risultati) => {
-            const ok = risultati.filter((r) => r.status === 'fulfilled').length
-            console.log(`[Email .ics POST] ${ok}/${destinatari.length} inviate (host: ${host}, destinatari: ${destinatari.join(', ')})`)
-          })
+        // Fire-and-forget MA in SEQUENZA con 500ms di pausa
+        // (Gmail SMTP fa rate-limit aggressivo sulle connessioni parallele).
+        ;(async () => {
+          let okCount = 0
+          for (const email of destinatari) {
+            try {
+              await inviaInvitoCalendario(datiIcs, email, host)
+              okCount++
+            } catch (err) {
+              console.error(`[Email] ✗ INVITO (da ${host}) → ${email}`, err)
+            }
+            await new Promise((resolve) => setTimeout(resolve, 500))
+          }
+          console.log(`[Email .ics POST] ${okCount}/${destinatari.length} inviate (host: ${host}, destinatari: ${destinatari.join(', ')})`)
+        })()
       }
     } else {
       console.warn(`[POST] Professionista host non riconosciuto ("${prof}") — email .ics non inviate.`)
@@ -414,11 +424,20 @@ export async function PATCH(request: NextRequest) {
       const guestListPatch = nomiStaffDaGuestsField(guestEmailsPatch.join(','))
       const destinatari = destinatariIcs(hostPatch, guestListPatch)
       if (destinatari.length > 0) {
-        Promise.allSettled(destinatari.map((email) => inviaModificaCalendario(datiIcs, email, hostPatch)))
-          .then((risultati) => {
-            const ok = risultati.filter((r) => r.status === 'fulfilled').length
-            console.log(`[Email .ics PATCH] ${ok}/${destinatari.length} inviate (host: ${hostPatch}, destinatari: ${destinatari.join(', ')})`)
-          })
+        // Fire-and-forget in SEQUENZA con 500ms di pausa
+        ;(async () => {
+          let okCount = 0
+          for (const email of destinatari) {
+            try {
+              await inviaModificaCalendario(datiIcs, email, hostPatch)
+              okCount++
+            } catch (err) {
+              console.error(`[Email] ✗ MODIFICA (da ${hostPatch}) → ${email}`, err)
+            }
+            await new Promise((resolve) => setTimeout(resolve, 500))
+          }
+          console.log(`[Email .ics PATCH] ${okCount}/${destinatari.length} inviate (host: ${hostPatch}, destinatari: ${destinatari.join(', ')})`)
+        })()
       }
     } else if (!hostPatch) {
       console.warn(`[PATCH] Professionista host non riconosciuto ("${profField}") — email .ics non inviate.`)
@@ -506,11 +525,20 @@ export async function DELETE(request: NextRequest) {
       const guestListDel = nomiStaffDaGuestsField(appPreDelete.guests ?? '')
       const destinatari = destinatariIcs(hostDel, guestListDel)
       if (destinatari.length > 0) {
-        Promise.allSettled(destinatari.map((email) => inviaCancellazioneCalendario(datiIcs, email, hostDel)))
-          .then((risultati) => {
-            const ok = risultati.filter((r) => r.status === 'fulfilled').length
-            console.log(`[Email .ics DELETE] ${ok}/${destinatari.length} inviate (host: ${hostDel}, destinatari: ${destinatari.join(', ')})`)
-          })
+        // Fire-and-forget in SEQUENZA con 500ms di pausa
+        ;(async () => {
+          let okCount = 0
+          for (const email of destinatari) {
+            try {
+              await inviaCancellazioneCalendario(datiIcs, email, hostDel)
+              okCount++
+            } catch (err) {
+              console.error(`[Email] ✗ CANCEL (da ${hostDel}) → ${email}`, err)
+            }
+            await new Promise((resolve) => setTimeout(resolve, 500))
+          }
+          console.log(`[Email .ics DELETE] ${okCount}/${destinatari.length} inviate (host: ${hostDel}, destinatari: ${destinatari.join(', ')})`)
+        })()
       }
     } else if (appPreDelete && !hostDel) {
       console.warn(`[DELETE] Professionista host non riconosciuto ("${appPreDelete.professionista}") — email cancellazione non inviate.`)

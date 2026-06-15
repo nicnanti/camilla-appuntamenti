@@ -73,14 +73,26 @@ function generaIcs(
 export type ProfessionistaHost = 'Camilla' | 'Giacomo'
 
 function buildTransporter(user: string, pass: string) {
-  const opts: SMTPTransport.Options & { family?: 4 | 6 } = {
+  // Pool: riusa la connessione TCP invece di aprirla/chiuderla per ogni email.
+  // Evita rate-limit Gmail e ETIMEDOUT su invii multipli.
+  // `pool`/`maxConnections`/`maxMessages`/`family` non sono nei tipi SMTPTransport.Options
+  // ma vengono passati direttamente a nodemailer/net.connect a runtime.
+  const opts: SMTPTransport.Options & {
+    pool?: boolean
+    maxConnections?: number
+    maxMessages?: number
+    family?: 4 | 6
+  } = {
     host: 'smtp.gmail.com',
     port: 465,
     secure: true,
     auth: { user, pass },
-    connectionTimeout: 10_000,
-    greetingTimeout:   10_000,
-    socketTimeout:     10_000,
+    pool: true,
+    maxConnections: 1,
+    maxMessages: 10,
+    connectionTimeout: 15_000,
+    greetingTimeout:   15_000,
+    socketTimeout:     15_000,
     family: 4, // Railway non supporta IPv6 → forza IPv4
   }
   return nodemailer.createTransport(opts)
