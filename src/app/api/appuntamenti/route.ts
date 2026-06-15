@@ -30,11 +30,11 @@ function asHost(prof: string | undefined): ProfessionistaHost | null {
 }
 
 // Lista destinatari email .ics:
-// - L'host riceve SEMPRE
+// - L'host NON è incluso (vede già l'evento sul proprio Google Calendar)
 // - Ogni staff (Camilla/Giacomo/Fiorella/Viviana) presente in guestList riceve
 // - Eventuale CC sviluppo se DEV_EMAIL_CC è impostata
 // - MAI cliente principale, MAI invitati extra
-function destinatariIcs(host: ProfessionistaHost, guestList: string[]): string[] {
+function destinatariIcs(_host: ProfessionistaHost, guestList: string[]): string[] {
   const EMAIL_CAMILLA  = process.env.CAMILLA_GMAIL_USER   ?? process.env.GOOGLE_CALENDAR_ID_CAMILLA
   const EMAIL_GIACOMO  = process.env.GIACOMO_GMAIL_USER   ?? process.env.GOOGLE_CALENDAR_ID_GIACOMO
   const EMAIL_FIORELLA = process.env.ASSISTANT_EMAIL_FIORELLA
@@ -43,11 +43,7 @@ function destinatariIcs(host: ProfessionistaHost, guestList: string[]): string[]
 
   const lista: (string | undefined)[] = []
 
-  // Host: sempre
-  if (host === 'Camilla') lista.push(EMAIL_CAMILLA)
-  if (host === 'Giacomo') lista.push(EMAIL_GIACOMO)
-
-  // Staff selezionati come guest
+  // Solo staff selezionati come guest (host escluso)
   if (guestList.includes('Camilla'))  lista.push(EMAIL_CAMILLA)
   if (guestList.includes('Giacomo'))  lista.push(EMAIL_GIACOMO)
   if (guestList.includes('Fiorella')) lista.push(EMAIL_FIORELLA)
