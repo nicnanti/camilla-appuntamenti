@@ -16,9 +16,17 @@ import {
   eliminaEventoCalendar,
   getCalendarIdForProfessionista,
 } from '@/lib/google-calendar'
-// Gli inviti email partono direttamente da Google Calendar (sendUpdates: 'all').
-// Il modulo '@/lib/email' è mantenuto per /api/test-email diagnostico ma non è
-// più sul percorso critico di POST/PATCH/DELETE.
+import {
+  inviaInvitoCalendario,
+  inviaModificaCalendario,
+  inviaCancellazioneCalendario,
+  type ProfessionistaHost,
+} from '@/lib/email'
+
+function asHost(prof: string | undefined): ProfessionistaHost | null {
+  if (prof === 'Camilla' || prof === 'Giacomo') return prof
+  return null
+}
 
 // Mappa nome → email
 const EMAIL_MAP: Record<string, string> = {
@@ -198,22 +206,18 @@ export async function POST(request: NextRequest) {
 
     const tStart = Date.now()
 
-    // ── Google Calendar: UN solo evento nel calendario dell'host, con attendees ─
-    // Le notifiche email partono da Google stesso (sendUpdates: 'all'), niente più SMTP.
+    // ── Google Calendar: UN solo evento nel calendario dell'host ──────────────
+    // (no attendees / sendUpdates: gli inviti email li manda nodemailer)
     const tGcal = Date.now()
-    const attendees = [
-      ...guestEmails,                                                                  // guest professionisti + assistenti
-      ...invitatiList.filter((inv) => inv.email).map((inv) => inv.email as string),    // invitati extra con email
-    ]
     const calendarEventsMap: Record<string, string> = {}
     try {
-      const eventId = await creaEventoCalendar(appData, getCalendarIdForProfessionista(prof), prof, attendees)
+      const eventId = await creaEventoCalendar(appData, getCalendarIdForProfessionista(prof), prof)
       if (eventId) calendarEventsMap[prof.toLowerCase()] = eventId
     } catch (err) {
       console.error('[POST] ✗ Google Calendar (host):', err)
     }
     const gcalIdToStore = Object.keys(calendarEventsMap).length > 0 ? JSON.stringify(calendarEventsMap) : ''
-    console.log(`[TIMING] Google Calendar (host: ${prof}, attendees: ${attendees.length}): ${Date.now() - tGcal}ms`)
+    console.log(`[TIMING] Google Calendar (host: ${prof}): ${Date.now() - tGcal}ms`)
 
     // ── Airtable: ENTRAMBE le tabelle in PARALLELO ────────────────────────────
     const tAt = Date.now()
@@ -244,8 +248,34 @@ export async function POST(request: NextRequest) {
     ])
     console.log(`[TIMING] Airtable (entrambe tabelle, parallelo): ${Date.now() - tAt}ms`)
 
-    // Gli inviti email partono direttamente da Google Calendar (sendUpdates: 'all')
-    // — niente più SMTP/nodemailer sul percorso critico.
+    // ── Email .ics: FIRE-AND-FORGET, SMTP dell'host (Camilla o Giacomo) ───────
+    const host = asHost(prof)
+    if (host) {
+      const datiIcs = {
+        cliente_nome,
+        cliente_telefono: cliente_telefono ?? '',
+        note: note ?? '',
+        data,
+        ora_inizio,
+        ora_fine,
+        professionistaNome: prof,
+        icsUid,
+        icsSequence: 0,
+      }
+      const destinatari = Array.from(new Set([
+        ...guestEmails,
+        ...invitatiList.filter((inv) => inv.email).map((inv) => inv.email as string),
+      ]))
+      if (destinatari.length > 0) {
+        Promise.allSettled(destinatari.map((email) => inviaInvitoCalendario(datiIcs, email, host)))
+          .then((risultati) => {
+            const ok = risultati.filter((r) => r.status === 'fulfilled').length
+            console.log(`[Email .ics POST] ${ok}/${destinatari.length} inviate (host: ${host})`)
+          })
+      }
+    } else {
+      console.warn(`[POST] Professionista host non riconosciuto ("${prof}") — email .ics non inviate.`)
+    }
 
     console.log(`[TIMING] POST totale: ${Date.now() - tStart}ms`)
     return NextResponse.json(appuntamento, { status: 201 })
@@ -281,35 +311,23 @@ export async function PATCH(request: NextRequest) {
     const reminderReset = orarioCambiato ? { reminder_sent: false, reminder_sent_at: null } : {}
     const entries = parseCalendarEvents(google_calendar_event_id)
 
-    // Calcola gli attendees aggiornati per l'evento dell'host
     const guestEmailsPatch: string[] = typeof guestsField === 'string'
       ? guestsField.split(',').map((e: string) => e.trim()).filter(Boolean)
       : []
     const invitatiEmailsPatch: string[] = (Array.isArray(datiAggiornamento.invitati) ? datiAggiornamento.invitati : [])
       .filter((inv: { email?: string }) => inv.email)
       .map((inv: { email?: string }) => inv.email as string)
-    const attendeesPatch = [...guestEmailsPatch, ...invitatiEmailsPatch]
-    const hostLower = (profField ?? '').toLowerCase()
 
-    // ── Google Calendar: tutti i calendari in PARALLELO ───────────────────────
-    // Attendees passati SOLO all'entry dell'host per evitare doppie notifiche
-    // su record legacy multi-calendario.
+    // ── Google Calendar: tutti i calendari in PARALLELO (no attendees, no sendUpdates) ─
     const tGcal = Date.now()
     await Promise.all(entries.map(async (entry) => {
-      const isHost = entry.nome.toLowerCase() === hostLower
       try {
-        await aggiornaEventoCalendar(
-          entry.eventId,
-          entry.calendarId,
-          datiAggiornamento,
-          profField,
-          isHost ? attendeesPatch : undefined,
-        )
+        await aggiornaEventoCalendar(entry.eventId, entry.calendarId, datiAggiornamento, profField)
       } catch (err) {
         console.error(`[PATCH] ✗ aggiornaEventoCalendar (${entry.nome}):`, err)
       }
     }))
-    console.log(`[TIMING] PATCH GCal (${entries.length} eventi paralleli, attendees host=${attendeesPatch.length}): ${Date.now() - tGcal}ms`)
+    console.log(`[TIMING] PATCH GCal (${entries.length} eventi paralleli): ${Date.now() - tGcal}ms`)
 
     // ── Airtable: ENTRAMBE le tabelle in PARALLELO ────────────────────────────
     const tAt = Date.now()
@@ -336,8 +354,31 @@ export async function PATCH(request: NextRequest) {
     ])
     console.log(`[TIMING] PATCH Airtable (entrambe tabelle parallelo): ${Date.now() - tAt}ms`)
 
-    // Google manda le notifiche di modifica direttamente (sendUpdates: 'all') —
-    // niente più invio email manuale lato SMTP.
+    // ── Email .ics MODIFICA: FIRE-AND-FORGET, SMTP dell'host ──────────────────
+    const hostPatch = asHost(profField)
+    if (hostPatch && ics_uid) {
+      const datiIcs = {
+        cliente_nome:     datiAggiornamento.cliente_nome ?? appuntamento.cliente_nome,
+        cliente_telefono: datiAggiornamento.cliente_telefono ?? appuntamento.cliente_telefono,
+        note:             datiAggiornamento.note ?? appuntamento.note ?? '',
+        data:             datiAggiornamento.data ?? appuntamento.data,
+        ora_inizio:       datiAggiornamento.ora_inizio ?? appuntamento.ora_inizio,
+        ora_fine:         datiAggiornamento.ora_fine ?? appuntamento.ora_fine,
+        professionistaNome: profField,
+        icsUid: ics_uid,
+        icsSequence: nuovaSequence,
+      }
+      const destinatari = Array.from(new Set([...guestEmailsPatch, ...invitatiEmailsPatch]))
+      if (destinatari.length > 0) {
+        Promise.allSettled(destinatari.map((email) => inviaModificaCalendario(datiIcs, email, hostPatch)))
+          .then((risultati) => {
+            const ok = risultati.filter((r) => r.status === 'fulfilled').length
+            console.log(`[Email .ics PATCH] ${ok}/${destinatari.length} inviate (host: ${hostPatch})`)
+          })
+      }
+    } else if (!hostPatch) {
+      console.warn(`[PATCH] Professionista host non riconosciuto ("${profField}") — email .ics non inviate.`)
+    }
 
     console.log(`[TIMING] PATCH totale: ${Date.now() - tStart}ms`)
     return NextResponse.json(appuntamento)
@@ -358,6 +399,14 @@ export async function DELETE(request: NextRequest) {
 
     const tStart = Date.now()
     const entries = parseCalendarEvents(gcalId ?? undefined)
+
+    // Leggi l'appuntamento PRIMA di cancellarlo (serve per le email .ics)
+    let appPreDelete: Awaited<ReturnType<typeof getAppuntamentoById>> | null = null
+    try {
+      appPreDelete = await getAppuntamentoById(id)
+    } catch (err) {
+      console.warn('[DELETE] Impossibile leggere appuntamento prima della cancellazione (email .ics non inviabili):', err)
+    }
 
     // ── Google Calendar: cancella tutti gli eventi in PARALLELO ───────────────
     const tGcal = Date.now()
@@ -396,8 +445,34 @@ export async function DELETE(request: NextRequest) {
     ])
     console.log(`[TIMING] DELETE Airtable (entrambe tabelle parallelo): ${Date.now() - tAt}ms`)
 
-    // Google manda le email di cancellazione direttamente agli attendees
-    // (sendUpdates: 'all' su events.delete) — niente più SMTP manuale.
+    // ── Email .ics CANCEL: FIRE-AND-FORGET, SMTP dell'host ────────────────────
+    const hostDel = appPreDelete ? asHost(appPreDelete.professionista) : null
+    if (hostDel && appPreDelete) {
+      const datiIcs = {
+        cliente_nome: appPreDelete.cliente_nome,
+        cliente_telefono: appPreDelete.cliente_telefono,
+        data: appPreDelete.data,
+        ora_inizio: appPreDelete.ora_inizio,
+        ora_fine: appPreDelete.ora_fine,
+        professionistaNome: appPreDelete.professionista ?? '',
+        icsUid: appPreDelete.ics_uid ?? '',
+        icsSequence: (appPreDelete.ics_sequence ?? 0) + 1,
+      }
+      const guestEmailsDel = (appPreDelete.guests ?? '').split(',').map((e) => e.trim()).filter(Boolean)
+      const invitatiEmailsDel = (appPreDelete.invitati ?? [])
+        .filter((inv) => inv.email)
+        .map((inv) => inv.email as string)
+      const destinatari = Array.from(new Set([...guestEmailsDel, ...invitatiEmailsDel]))
+      if (destinatari.length > 0) {
+        Promise.allSettled(destinatari.map((email) => inviaCancellazioneCalendario(datiIcs, email, hostDel)))
+          .then((risultati) => {
+            const ok = risultati.filter((r) => r.status === 'fulfilled').length
+            console.log(`[Email .ics DELETE] ${ok}/${destinatari.length} inviate (host: ${hostDel})`)
+          })
+      }
+    } else if (appPreDelete && !hostDel) {
+      console.warn(`[DELETE] Professionista host non riconosciuto ("${appPreDelete.professionista}") — email cancellazione non inviate.`)
+    }
 
     console.log(`[TIMING] DELETE totale: ${Date.now() - tStart}ms`)
     return NextResponse.json({ successo: true })

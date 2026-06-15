@@ -70,26 +70,44 @@ function generaIcs(
 
 // ─── Trasporto SMTP ──────────────────────────────────────────────────────────
 
-function getTransporter() {
-  const user = process.env.GMAIL_USER
-  const pass = process.env.GMAIL_APP_PASSWORD
-  if (!user || !pass) return null
-  // Config esplicita (no `service: 'gmail'`) per controllare host/porta/IP family.
-  // `family` non è tipizzato in SMTPTransport.Options ma viene passato a net.connect a runtime.
+export type ProfessionistaHost = 'Camilla' | 'Giacomo'
+
+function buildTransporter(user: string, pass: string) {
   const opts: SMTPTransport.Options & { family?: 4 | 6 } = {
     host: 'smtp.gmail.com',
     port: 465,
     secure: true,
     auth: { user, pass },
-    // Senza questi, una connessione SMTP fallita resta appesa ~120s (default Node)
     connectionTimeout: 10_000,
     greetingTimeout:   10_000,
     socketTimeout:     10_000,
-    // Railway non supporta IPv6 in uscita → forza IPv4 nella risoluzione DNS,
-    // altrimenti la connect fallisce con ENETUNREACH su 2607:f8b0:…:465
-    family: 4,
+    family: 4, // Railway non supporta IPv6 → forza IPv4
   }
   return nodemailer.createTransport(opts)
+}
+
+// Transporter generico (GMAIL_USER / GMAIL_APP_PASSWORD) — usato solo da /api/test-email
+function getTransporter() {
+  const user = process.env.GMAIL_USER
+  const pass = process.env.GMAIL_APP_PASSWORD
+  if (!user || !pass) return null
+  return buildTransporter(user, pass)
+}
+
+// Transporter per il professionista host — usato dagli inviti/modifiche/cancellazioni
+function getTransporterPerProf(host: ProfessionistaHost) {
+  const isCamilla = host === 'Camilla'
+  const user = isCamilla ? process.env.CAMILLA_GMAIL_USER : process.env.GIACOMO_GMAIL_USER
+  const pass = isCamilla ? process.env.CAMILLA_GMAIL_APP_PASSWORD : process.env.GIACOMO_GMAIL_APP_PASSWORD
+  if (!user || !pass) {
+    throw new Error(`Credenziali SMTP mancanti per ${host} (env: ${host.toUpperCase()}_GMAIL_USER / ${host.toUpperCase()}_GMAIL_APP_PASSWORD)`)
+  }
+  return { transporter: buildTransporter(user, pass), user }
+}
+
+function fromHeader(host: ProfessionistaHost, fromEmail: string): string {
+  const fullName = host === 'Camilla' ? 'Camilla Ghisleni' : 'Giacomo Ghisleni'
+  return `"${fullName} - Studio Ghisleni" <${fromEmail}>`
 }
 
 // ─── Logging helper ──────────────────────────────────────────────────────────
@@ -150,21 +168,17 @@ export async function inviaEmailTest(destinatario: string): Promise<{ ok: boolea
 
 export async function inviaInvitoCalendario(
   dati: DatiAppuntamento,
-  emailAssistente: string
+  emailAssistente: string,
+  host: ProfessionistaHost
 ): Promise<void> {
-  const transporter = getTransporter()
-  if (!transporter) {
-    console.warn('[Email] GMAIL_APP_PASSWORD non configurato — invito saltato per', emailAssistente)
-    return
-  }
-
+  const { transporter, user } = getTransporterPerProf(host)
   const icsContent = generaIcs(dati, emailAssistente, 'REQUEST')
   const dataIt = formatDataItaliano(dati.data)
-  const from = `"Studio Ghisleni" <${process.env.GMAIL_USER}>`
 
   try {
     const info = await transporter.sendMail({
-      from,
+      from: fromHeader(host, user),
+      replyTo: user,
       to: emailAssistente,
       subject: `Nuovo appuntamento: ${dati.cliente_nome} — ${dataIt} ore ${dati.ora_inizio}`,
       text: `Nuovo appuntamento\nCliente: ${dati.cliente_nome}\nData: ${dataIt}\nOra: ${dati.ora_inizio} - ${dati.ora_fine}\nProfessionista: ${dati.professionistaNome}`,
@@ -175,30 +189,26 @@ export async function inviaInvitoCalendario(
         content: icsContent,
       },
     })
-    console.log(`[Email] ✓ INVITO → ${emailAssistente} | messageId: ${info.messageId}`)
+    console.log(`[Email] ✓ INVITO (da ${host}) → ${emailAssistente} | messageId: ${info.messageId}`)
   } catch (err) {
-    logEmailError('INVITO', emailAssistente, err)
+    logEmailError(`INVITO (da ${host})`, emailAssistente, err)
     throw err
   }
 }
 
 export async function inviaModificaCalendario(
   dati: DatiAppuntamento,
-  emailAssistente: string
+  emailAssistente: string,
+  host: ProfessionistaHost
 ): Promise<void> {
-  const transporter = getTransporter()
-  if (!transporter) {
-    console.warn('[Email] GMAIL_APP_PASSWORD non configurato — modifica saltata per', emailAssistente)
-    return
-  }
-
+  const { transporter, user } = getTransporterPerProf(host)
   const icsContent = generaIcs(dati, emailAssistente, 'REQUEST')
   const dataIt = formatDataItaliano(dati.data)
-  const from = `"Studio Ghisleni" <${process.env.GMAIL_USER}>`
 
   try {
     const info = await transporter.sendMail({
-      from,
+      from: fromHeader(host, user),
+      replyTo: user,
       to: emailAssistente,
       subject: `Appuntamento aggiornato: ${dati.cliente_nome} — ${dataIt} ore ${dati.ora_inizio}`,
       text: `Appuntamento aggiornato\nCliente: ${dati.cliente_nome}\nData: ${dataIt}\nOra: ${dati.ora_inizio} - ${dati.ora_fine}\nProfessionista: ${dati.professionistaNome}`,
@@ -209,30 +219,26 @@ export async function inviaModificaCalendario(
         content: icsContent,
       },
     })
-    console.log(`[Email] ✓ MODIFICA → ${emailAssistente} | messageId: ${info.messageId}`)
+    console.log(`[Email] ✓ MODIFICA (da ${host}) → ${emailAssistente} | messageId: ${info.messageId}`)
   } catch (err) {
-    logEmailError('MODIFICA', emailAssistente, err)
+    logEmailError(`MODIFICA (da ${host})`, emailAssistente, err)
     throw err
   }
 }
 
 export async function inviaCancellazioneCalendario(
   dati: DatiAppuntamento,
-  emailAssistente: string
+  emailAssistente: string,
+  host: ProfessionistaHost
 ): Promise<void> {
-  const transporter = getTransporter()
-  if (!transporter) {
-    console.warn('[Email] GMAIL_APP_PASSWORD non configurato — cancellazione saltata per', emailAssistente)
-    return
-  }
-
+  const { transporter, user } = getTransporterPerProf(host)
   const icsContent = generaIcs(dati, emailAssistente, 'CANCEL')
   const dataIt = formatDataItaliano(dati.data)
-  const from = `"Studio Ghisleni" <${process.env.GMAIL_USER}>`
 
   try {
     const info = await transporter.sendMail({
-      from,
+      from: fromHeader(host, user),
+      replyTo: user,
       to: emailAssistente,
       subject: `Appuntamento cancellato: ${dati.cliente_nome} — ${dataIt} ore ${dati.ora_inizio}`,
       text: `Appuntamento cancellato\nCliente: ${dati.cliente_nome}\nData: ${dataIt}\nOra: ${dati.ora_inizio} - ${dati.ora_fine}\nProfessionista: ${dati.professionistaNome}`,
@@ -243,9 +249,9 @@ export async function inviaCancellazioneCalendario(
         content: icsContent,
       },
     })
-    console.log(`[Email] ✓ CANCEL → ${emailAssistente} | messageId: ${info.messageId}`)
+    console.log(`[Email] ✓ CANCEL (da ${host}) → ${emailAssistente} | messageId: ${info.messageId}`)
   } catch (err) {
-    logEmailError('CANCEL', emailAssistente, err)
+    logEmailError(`CANCEL (da ${host})`, emailAssistente, err)
     throw err
   }
 }

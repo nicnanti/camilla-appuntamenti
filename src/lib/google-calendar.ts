@@ -49,10 +49,10 @@ export async function creaEventoCalendar(
   app: Partial<Appuntamento> & { data: string; ora_inizio: string; ora_fine: string },
   calendarId: string,
   professionistaNome?: string,
-  attendees?: string[],
 ): Promise<string> {
   const calendar = getCalendar()
 
+  // Niente attendees né sendUpdates: gli inviti email li manda nodemailer dall'host SMTP.
   const requestBody: Record<string, unknown> = {
     summary: costruisciTitoloEvento(app),
     description: costruisciDescrizioneEvento(app, professionistaNome),
@@ -75,29 +75,7 @@ export async function creaEventoCalendar(
 
   if (app.indirizzo) requestBody.location = app.indirizzo
 
-  const attendeesValidi = (attendees ?? []).filter(Boolean)
-
-  if (attendeesValidi.length > 0) {
-    console.log(`[GCal] creaEventoCalendar (attendees=${attendeesValidi.length}) → ${calendarId} | ${attendeesValidi.join(', ')}`)
-    try {
-      const risposta = await calendar.events.insert({
-        calendarId,
-        sendUpdates: 'all',
-        requestBody: { ...requestBody, attendees: attendeesValidi.map((email) => ({ email })) },
-      })
-      return risposta.data.id ?? ''
-    } catch (err: unknown) {
-      const status = (err as { code?: number })?.code ?? (err as { status?: number })?.status
-      if (status === 403) {
-        console.warn('[GCal] 403 inviando attendees — service account senza Domain-Wide Delegation. Fallback senza inviti.')
-        // cade nel branch sotto
-      } else {
-        throw err
-      }
-    }
-  }
-
-  console.log(`[GCal] creaEventoCalendar (no attendees) → ${calendarId}`)
+  console.log(`[GCal] creaEventoCalendar → ${calendarId}`)
   const risposta = await calendar.events.insert({ calendarId, requestBody })
   return risposta.data.id ?? ''
 }
@@ -107,7 +85,6 @@ export async function aggiornaEventoCalendar(
   calendarId: string,
   app: Partial<Appuntamento>,
   professionistaNome?: string,
-  attendees?: string[],   // undefined = non toccare gli attendees; array = sostituisci
 ): Promise<void> {
   const calendar = getCalendar()
 
@@ -137,32 +114,12 @@ export async function aggiornaEventoCalendar(
 
   if (app.indirizzo !== undefined) aggiornamenti.location = app.indirizzo
 
-  if (attendees !== undefined) {
-    aggiornamenti.attendees = attendees.filter(Boolean).map((email) => ({ email }))
-  }
-
-  console.log(`[GCal] aggiornaEventoCalendar → ${eventId} (${calendarId}) | sendUpdates: all | attendees: ${attendees ? attendees.length : 'unchanged'}`)
-  try {
-    await calendar.events.patch({
-      calendarId,
-      eventId,
-      sendUpdates: 'all',
-      requestBody: aggiornamenti,
-    })
-  } catch (err: unknown) {
-    const status = (err as { code?: number })?.code ?? (err as { status?: number })?.status
-    if (status === 403 && attendees !== undefined) {
-      console.warn('[GCal] 403 nella patch con attendees — riprovo senza attendees (no DWD).')
-      delete aggiornamenti.attendees
-      await calendar.events.patch({ calendarId, eventId, sendUpdates: 'all', requestBody: aggiornamenti })
-    } else {
-      throw err
-    }
-  }
+  console.log(`[GCal] aggiornaEventoCalendar → ${eventId} (${calendarId})`)
+  await calendar.events.patch({ calendarId, eventId, requestBody: aggiornamenti })
 }
 
 export async function eliminaEventoCalendar(eventId: string, calendarId: string): Promise<void> {
   const calendar = getCalendar()
-  console.log(`[GCal] eliminaEventoCalendar → ${eventId} (${calendarId}) | sendUpdates: all`)
-  await calendar.events.delete({ calendarId, eventId, sendUpdates: 'all' })
+  console.log(`[GCal] eliminaEventoCalendar → ${eventId} (${calendarId})`)
+  await calendar.events.delete({ calendarId, eventId })
 }
