@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
+import { waitUntil } from '@vercel/functions'
 import {
   getAppuntamenti,
   getAppuntamentoById,
@@ -311,9 +312,9 @@ export async function POST(request: NextRequest) {
       }
       const destinatari = destinatariIcs(host, guestList)
       if (destinatari.length > 0) {
-        // Fire-and-forget MA in SEQUENZA con 500ms di pausa
-        // (Gmail SMTP fa rate-limit aggressivo sulle connessioni parallele).
-        ;(async () => {
+        // Sequenziale con 500ms di pausa (Gmail rate-limit sulle connessioni parallele).
+        // waitUntil() tiene viva la funzione serverless oltre la response al client.
+        waitUntil((async () => {
           let okCount = 0
           for (const email of destinatari) {
             try {
@@ -325,7 +326,7 @@ export async function POST(request: NextRequest) {
             await new Promise((resolve) => setTimeout(resolve, 500))
           }
           console.log(`[Email .ics POST] ${okCount}/${destinatari.length} inviate (host: ${host}, destinatari: ${destinatari.join(', ')})`)
-        })()
+        })())
       }
     } else {
       console.warn(`[POST] Professionista host non riconosciuto ("${prof}") — email .ics non inviate.`)
@@ -424,8 +425,8 @@ export async function PATCH(request: NextRequest) {
       const guestListPatch = nomiStaffDaGuestsField(guestEmailsPatch.join(','))
       const destinatari = destinatariIcs(hostPatch, guestListPatch)
       if (destinatari.length > 0) {
-        // Fire-and-forget in SEQUENZA con 500ms di pausa
-        ;(async () => {
+        // Sequenziale con 500ms di pausa. waitUntil() previene troncamento serverless.
+        waitUntil((async () => {
           let okCount = 0
           for (const email of destinatari) {
             try {
@@ -437,7 +438,7 @@ export async function PATCH(request: NextRequest) {
             await new Promise((resolve) => setTimeout(resolve, 500))
           }
           console.log(`[Email .ics PATCH] ${okCount}/${destinatari.length} inviate (host: ${hostPatch}, destinatari: ${destinatari.join(', ')})`)
-        })()
+        })())
       }
     } else if (!hostPatch) {
       console.warn(`[PATCH] Professionista host non riconosciuto ("${profField}") — email .ics non inviate.`)
@@ -525,8 +526,8 @@ export async function DELETE(request: NextRequest) {
       const guestListDel = nomiStaffDaGuestsField(appPreDelete.guests ?? '')
       const destinatari = destinatariIcs(hostDel, guestListDel)
       if (destinatari.length > 0) {
-        // Fire-and-forget in SEQUENZA con 500ms di pausa
-        ;(async () => {
+        // Sequenziale con 500ms di pausa. waitUntil() previene troncamento serverless.
+        waitUntil((async () => {
           let okCount = 0
           for (const email of destinatari) {
             try {
@@ -538,7 +539,7 @@ export async function DELETE(request: NextRequest) {
             await new Promise((resolve) => setTimeout(resolve, 500))
           }
           console.log(`[Email .ics DELETE] ${okCount}/${destinatari.length} inviate (host: ${hostDel}, destinatari: ${destinatari.join(', ')})`)
-        })()
+        })())
       }
     } else if (appPreDelete && !hostDel) {
       console.warn(`[DELETE] Professionista host non riconosciuto ("${appPreDelete.professionista}") — email cancellazione non inviate.`)
