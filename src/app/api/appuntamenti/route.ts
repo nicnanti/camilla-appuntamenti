@@ -28,6 +28,26 @@ function asHost(prof: string | undefined): ProfessionistaHost | null {
   return null
 }
 
+// Lista destinatari email .ics: SOLO staff interno (guest prof + Fiorella + Viviana).
+// MAI cliente principale, MAI invitati.
+function destinatariIcs(host: ProfessionistaHost, guestProEmail?: string): string[] {
+  const out: string[] = []
+  if (guestProEmail) out.push(guestProEmail)
+  const fiorella = process.env.ASSISTANT_EMAIL_FIORELLA
+  const viviana  = process.env.ASSISTANT_EMAIL_VIVIANA
+  if (fiorella) out.push(fiorella)
+  if (viviana)  out.push(viviana)
+  return Array.from(new Set(out.filter((e) => !!e && e.trim() !== '')))
+  // host parameter intenzionalmente non incluso: l'host non riceve email da sé stesso
+}
+
+// Email del professionista OPPOSTO all'host (l'unico che potrebbe essere "guest prof")
+function emailProfOpposto(host: ProfessionistaHost): string {
+  return host === 'Camilla'
+    ? (process.env.GOOGLE_CALENDAR_ID_GIACOMO ?? 'giacomo.ghisleni1@gmail.com')
+    : (process.env.GOOGLE_CALENDAR_ID_CAMILLA ?? 'camilla.ghisleni1@gmail.com')
+}
+
 // Mappa nome → email
 const EMAIL_MAP: Record<string, string> = {
   Camilla:  process.env.GOOGLE_CALENDAR_ID_CAMILLA ?? 'camilla.ghisleni1@gmail.com',
@@ -262,10 +282,9 @@ export async function POST(request: NextRequest) {
         icsUid,
         icsSequence: 0,
       }
-      const destinatari = Array.from(new Set([
-        ...guestEmails,
-        ...invitatiList.filter((inv) => inv.email).map((inv) => inv.email as string),
-      ]))
+      // SOLO staff interno: guest professionista (se selezionato) + Fiorella + Viviana
+      const guestProSelezionato = guestList.some((g) => PROFESSIONISTI.has(g) && g !== prof)
+      const destinatari = destinatariIcs(host, guestProSelezionato ? emailProfOpposto(host) : undefined)
       if (destinatari.length > 0) {
         Promise.allSettled(destinatari.map((email) => inviaInvitoCalendario(datiIcs, email, host)))
           .then((risultati) => {
@@ -314,9 +333,7 @@ export async function PATCH(request: NextRequest) {
     const guestEmailsPatch: string[] = typeof guestsField === 'string'
       ? guestsField.split(',').map((e: string) => e.trim()).filter(Boolean)
       : []
-    const invitatiEmailsPatch: string[] = (Array.isArray(datiAggiornamento.invitati) ? datiAggiornamento.invitati : [])
-      .filter((inv: { email?: string }) => inv.email)
-      .map((inv: { email?: string }) => inv.email as string)
+    // NB: gli `invitati` NON ricevono email .ics — sono clienti aggiuntivi, non staff.
 
     // ── Google Calendar: tutti i calendari in PARALLELO (no attendees, no sendUpdates) ─
     const tGcal = Date.now()
@@ -368,7 +385,10 @@ export async function PATCH(request: NextRequest) {
         icsUid: ics_uid,
         icsSequence: nuovaSequence,
       }
-      const destinatari = Array.from(new Set([...guestEmailsPatch, ...invitatiEmailsPatch]))
+      // SOLO staff: guest professionista (se è nei guests email) + Fiorella + Viviana
+      const altroProf = emailProfOpposto(hostPatch).toLowerCase()
+      const guestProInGuests = guestEmailsPatch.some((e) => e.toLowerCase() === altroProf)
+      const destinatari = destinatariIcs(hostPatch, guestProInGuests ? emailProfOpposto(hostPatch) : undefined)
       if (destinatari.length > 0) {
         Promise.allSettled(destinatari.map((email) => inviaModificaCalendario(datiIcs, email, hostPatch)))
           .then((risultati) => {
@@ -458,11 +478,11 @@ export async function DELETE(request: NextRequest) {
         icsUid: appPreDelete.ics_uid ?? '',
         icsSequence: (appPreDelete.ics_sequence ?? 0) + 1,
       }
-      const guestEmailsDel = (appPreDelete.guests ?? '').split(',').map((e) => e.trim()).filter(Boolean)
-      const invitatiEmailsDel = (appPreDelete.invitati ?? [])
-        .filter((inv) => inv.email)
-        .map((inv) => inv.email as string)
-      const destinatari = Array.from(new Set([...guestEmailsDel, ...invitatiEmailsDel]))
+      // SOLO staff: guest professionista (se è nei guests email) + Fiorella + Viviana
+      const guestEmailsDel = (appPreDelete.guests ?? '').toLowerCase()
+      const altroProf = emailProfOpposto(hostDel).toLowerCase()
+      const guestProPresente = guestEmailsDel.includes(altroProf)
+      const destinatari = destinatariIcs(hostDel, guestProPresente ? emailProfOpposto(hostDel) : undefined)
       if (destinatari.length > 0) {
         Promise.allSettled(destinatari.map((email) => inviaCancellazioneCalendario(datiIcs, email, hostDel)))
           .then((risultati) => {
