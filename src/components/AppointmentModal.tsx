@@ -17,12 +17,16 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
   const [modalita, setModalita] = useState<'dettagli' | 'modifica' | 'sposta'>('dettagli')
   const [loading, setLoading] = useState(false)
 
+  const dataFineIniziale = appuntamento.data_fine ?? ''
+  const multiGiornoIniziale = !!(dataFineIniziale && dataFineIniziale > appuntamento.data)
+
   const [form, setForm] = useState({
     cliente_nome: appuntamento.cliente_nome,
     cliente_telefono: appuntamento.cliente_telefono,
     note: appuntamento.note ?? '',
     data: appuntamento.data,
-    data_fine: appuntamento.data_fine ?? '',
+    data_fine: dataFineIniziale,
+    multiGiorno: multiGiornoIniziale,
     ora_inizio: appuntamento.ora_inizio,
     ora_fine: appuntamento.ora_fine,
     indirizzo: appuntamento.indirizzo ?? '',
@@ -32,8 +36,8 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
   const aggiorna = async () => {
     setLoading(true)
     try {
-      // Normalizza data_fine: null se vuota o uguale alla data inizio
-      const dataFineNorm = form.data_fine && form.data_fine > form.data ? form.data_fine : null
+      // Normalizza data_fine: solo se checkbox attiva E successiva alla data inizio
+      const dataFineNorm = form.multiGiorno && form.data_fine && form.data_fine > form.data ? form.data_fine : null
       const res = await fetch('/api/appuntamenti', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -273,33 +277,61 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
                   onRimuovi={(idx) => setForm((prev) => ({ ...prev, invitati: prev.invitati.filter((_, i) => i !== idx) }))}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              {form.multiGiorno ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Data inizio</label>
+                    <input
+                      type="date"
+                      className="input-field"
+                      value={form.data}
+                      onChange={(e) => {
+                        const nuovaData = e.target.value
+                        const dataFineAggiornata = form.data_fine && form.data_fine < nuovaData ? nuovaData : form.data_fine
+                        setForm({ ...form, data: nuovaData, data_fine: dataFineAggiornata })
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Data fine</label>
+                    <input
+                      type="date"
+                      className="input-field"
+                      value={form.data_fine}
+                      min={form.data}
+                      onChange={(e) => setForm({ ...form, data_fine: e.target.value })}
+                    />
+                  </div>
+                </div>
+              ) : (
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Data inizio</label>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Data</label>
                   <input
                     type="date"
                     className="input-field"
                     value={form.data}
-                    onChange={(e) => {
-                      const nuovaData = e.target.value
-                      // Se data_fine diventa precedente, sgancia
-                      const dataFineAggiornata = form.data_fine && form.data_fine < nuovaData ? '' : form.data_fine
-                      setForm({ ...form, data: nuovaData, data_fine: dataFineAggiornata })
-                    }}
+                    onChange={(e) => setForm({ ...form, data: e.target.value })}
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">
-                    Data fine <span className="text-gray-300 font-normal">(opz.)</span>
-                  </label>
+              )}
+
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
                   <input
-                    type="date"
-                    className="input-field"
-                    value={form.data_fine}
-                    min={form.data}
-                    onChange={(e) => setForm({ ...form, data_fine: e.target.value })}
+                    type="checkbox"
+                    checked={form.multiGiorno}
+                    onChange={(e) => {
+                      const checked = e.target.checked
+                      setForm((prev) => ({
+                        ...prev,
+                        multiGiorno: checked,
+                        data_fine: checked ? (prev.data_fine || prev.data) : '',
+                      }))
+                    }}
+                    className="w-4 h-4 rounded border-gray-300 text-[#1E3A5F] focus:ring-[#1E3A5F]"
                   />
-                </div>
+                  <span className="text-xs text-gray-500">Data di fine diversa</span>
+                </label>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1.5">Note</label>

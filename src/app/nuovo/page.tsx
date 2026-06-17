@@ -34,7 +34,8 @@ interface FormState {
   cliente_dettagli: string
   cliente_indirizzo: string
   data: string
-  data_fine: string  // opzionale; '' = appuntamento di un solo giorno
+  data_fine: string      // valorizzato solo quando multiGiorno = true
+  multiGiorno: boolean   // checkbox "Data di fine diversa"
   ora_inizio: string
   ora_fine: string
   note: string
@@ -93,6 +94,7 @@ export default function PaginaNuovoAppuntamento() {
     cliente_indirizzo: '',
     data: oggi,
     data_fine: '',
+    multiGiorno: false,
     ora_inizio: '09:00',
     ora_fine: '10:00',
     note: '',
@@ -123,8 +125,12 @@ export default function PaginaNuovoAppuntamento() {
     if (!form.professionista) e.professionista = 'Seleziona un professionista'
     if (!form.cliente_nome.trim()) e.cliente_nome = 'Inserisci il nome del cliente'
     if (!form.data) e.data = 'Seleziona una data'
-    if (form.data_fine && form.data_fine < form.data) {
-      e.data_fine = 'La data fine non può essere precedente alla data inizio'
+    if (form.multiGiorno) {
+      if (!form.data_fine) {
+        e.data_fine = 'Seleziona la data di fine'
+      } else if (form.data_fine < form.data) {
+        e.data_fine = 'La data di fine non può essere precedente alla data di inizio'
+      }
     }
     if (form.ora_inizio >= form.ora_fine) e.ora_fine = "L'ora di fine deve essere dopo l'inizio"
     setErrori(e)
@@ -145,8 +151,8 @@ export default function PaginaNuovoAppuntamento() {
           cliente_dettagli: form.cliente_dettagli,
           indirizzo: form.cliente_indirizzo,
           data: form.data,
-          // data_fine solo se valorizzata e successiva a data
-          data_fine: form.data_fine && form.data_fine > form.data ? form.data_fine : null,
+          // data_fine solo se checkbox attiva E data successiva alla data inizio
+          data_fine: form.multiGiorno && form.data_fine && form.data_fine > form.data ? form.data_fine : null,
           ora_inizio: form.ora_inizio,
           ora_fine: form.ora_fine,
           note: form.note,
@@ -262,75 +268,147 @@ export default function PaginaNuovoAppuntamento() {
             />
           </div>
 
-          {/* Data inizio */}
-          <div className="px-4 py-3">
-            <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1.5">Data inizio</p>
-            <DatePicker
-              value={form.data}
-              min={oggi}
-              errore={!!errori.data}
-              onChange={(data) => {
-                // Se data fine diventa precedente, sgancia
-                const data_fine = form.data_fine && form.data_fine < data ? '' : form.data_fine
-                setForm({ ...form, data, data_fine })
-                if (errori.data) setErrori({ ...errori, data: undefined })
-                if (errori.data_fine) setErrori({ ...errori, data_fine: undefined })
-              }}
-            />
-            {errori.data && <p className="text-xs text-red-500 mt-1">{errori.data}</p>}
-          </div>
+          {/* Data + Ora — layout condizionale in base a multiGiorno */}
+          {form.multiGiorno ? (
+            <>
+              {/* Multi-giorno: 2 calendari affiancati */}
+              <div className="px-4 py-3 grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1.5">Data inizio</p>
+                  <DatePicker
+                    value={form.data}
+                    min={oggi}
+                    errore={!!errori.data}
+                    onChange={(data) => {
+                      const data_fine = form.data_fine && form.data_fine < data ? data : form.data_fine
+                      setForm({ ...form, data, data_fine })
+                      if (errori.data) setErrori({ ...errori, data: undefined })
+                      if (errori.data_fine) setErrori({ ...errori, data_fine: undefined })
+                    }}
+                  />
+                  {errori.data && <p className="text-xs text-red-500 mt-1">{errori.data}</p>}
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1.5">Data fine</p>
+                  <DatePicker
+                    value={form.data_fine}
+                    min={form.data || oggi}
+                    errore={!!errori.data_fine}
+                    onChange={(data_fine) => {
+                      setForm({ ...form, data_fine })
+                      if (errori.data_fine) setErrori({ ...errori, data_fine: undefined })
+                    }}
+                  />
+                  {errori.data_fine && <p className="text-xs text-red-500 mt-1">{errori.data_fine}</p>}
+                </div>
+              </div>
 
-          {/* Data fine (opzionale, per appuntamenti multi-giorno) */}
-          <div className="px-4 py-3">
-            <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1.5">
-              Data fine <span className="text-gray-300 normal-case tracking-normal">(opzionale, per multi-giorno)</span>
-            </p>
-            <DatePicker
-              value={form.data_fine}
-              min={form.data || oggi}
-              errore={!!errori.data_fine}
-              onChange={(data_fine) => {
-                setForm({ ...form, data_fine })
-                if (errori.data_fine) setErrori({ ...errori, data_fine: undefined })
-              }}
-            />
-            {errori.data_fine && <p className="text-xs text-red-500 mt-1">{errori.data_fine}</p>}
-          </div>
+              {/* Orari sotto i rispettivi calendari */}
+              <div className="px-4 py-3 grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Ora inizio</p>
+                  <select
+                    className="w-full text-sm text-[#1A1A1A] bg-transparent focus:outline-none"
+                    value={form.ora_inizio}
+                    onChange={(e) => {
+                      setForm({ ...form, ora_inizio: e.target.value })
+                      if (errori.ora_fine) setErrori({ ...errori, ora_fine: undefined })
+                    }}
+                  >
+                    {SLOT_ORARI.map((s) => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Ora fine</p>
+                  <select
+                    className={`w-full text-sm bg-transparent focus:outline-none ${errori.ora_fine ? 'text-red-400' : 'text-[#1A1A1A]'}`}
+                    value={form.ora_fine}
+                    onChange={(e) => {
+                      setForm({ ...form, ora_fine: e.target.value })
+                      if (errori.ora_fine) setErrori({ ...errori, ora_fine: undefined })
+                    }}
+                  >
+                    {SLOT_ORARI.map((s) => <option key={s}>{s}</option>)}
+                  </select>
+                  {errori.ora_fine && <p className="text-xs text-red-500 mt-1">{errori.ora_fine}</p>}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Default singolo giorno */}
+              <div className="px-4 py-3">
+                <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1.5">Data</p>
+                <DatePicker
+                  value={form.data}
+                  min={oggi}
+                  errore={!!errori.data}
+                  onChange={(data) => {
+                    setForm({ ...form, data })
+                    if (errori.data) setErrori({ ...errori, data: undefined })
+                  }}
+                />
+                {errori.data && <p className="text-xs text-red-500 mt-1">{errori.data}</p>}
+              </div>
 
-          {/* Orario */}
-          <div className="px-4 py-3 grid grid-cols-2 gap-3">
-            <div>
-              <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Inizio</p>
-              <select
-                className="w-full text-sm text-[#1A1A1A] bg-transparent focus:outline-none"
-                value={form.ora_inizio}
+              <div className="px-4 py-3 grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Inizio</p>
+                  <select
+                    className="w-full text-sm text-[#1A1A1A] bg-transparent focus:outline-none"
+                    value={form.ora_inizio}
+                    onChange={(e) => {
+                      const nuova = e.target.value
+                      const idx = SLOT_ORARI.indexOf(nuova)
+                      const fine = nuova >= form.ora_fine
+                        ? SLOT_ORARI[Math.min(idx + 4, SLOT_ORARI.length - 1)]
+                        : form.ora_fine
+                      setForm({ ...form, ora_inizio: nuova, ora_fine: fine })
+                      if (errori.ora_fine) setErrori({ ...errori, ora_fine: undefined })
+                    }}
+                  >
+                    {SLOT_ORARI.map((s) => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Fine</p>
+                  <select
+                    className={`w-full text-sm bg-transparent focus:outline-none ${errori.ora_fine ? 'text-red-400' : 'text-[#1A1A1A]'}`}
+                    value={form.ora_fine}
+                    onChange={(e) => {
+                      setForm({ ...form, ora_fine: e.target.value })
+                      if (errori.ora_fine) setErrori({ ...errori, ora_fine: undefined })
+                    }}
+                  >
+                    {SLOT_ORARI.map((s) => <option key={s}>{s}</option>)}
+                  </select>
+                  {errori.ora_fine && <p className="text-xs text-red-500 mt-1">{errori.ora_fine}</p>}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Checkbox "Data di fine diversa" */}
+          <div className="px-4 py-3">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={form.multiGiorno}
                 onChange={(e) => {
-                  const nuova = e.target.value
-                  const idx = SLOT_ORARI.indexOf(nuova)
-                  const fine = nuova >= form.ora_fine
-                    ? SLOT_ORARI[Math.min(idx + 4, SLOT_ORARI.length - 1)]
-                    : form.ora_fine
-                  setForm({ ...form, ora_inizio: nuova, ora_fine: fine })
-                  if (errori.ora_fine) setErrori({ ...errori, ora_fine: undefined })
+                  const checked = e.target.checked
+                  setForm((prev) => ({
+                    ...prev,
+                    multiGiorno: checked,
+                    // Quando si attiva, default data_fine = data (l'utente la cambierà)
+                    // Quando si disattiva, svuota data_fine
+                    data_fine: checked ? (prev.data_fine || prev.data) : '',
+                  }))
+                  if (errori.data_fine) setErrori({ ...errori, data_fine: undefined })
                 }}
-              >
-                {SLOT_ORARI.map((s) => <option key={s}>{s}</option>)}
-              </select>
-            </div>
-            <div>
-              <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Fine</p>
-              <select
-                className={`w-full text-sm bg-transparent focus:outline-none ${errori.ora_fine ? 'text-red-400' : 'text-[#1A1A1A]'}`}
-                value={form.ora_fine}
-                onChange={(e) => {
-                  setForm({ ...form, ora_fine: e.target.value })
-                  if (errori.ora_fine) setErrori({ ...errori, ora_fine: undefined })
-                }}
-              >
-                {SLOT_ORARI.map((s) => <option key={s}>{s}</option>)}
-              </select>
-              {errori.ora_fine && <p className="text-xs text-red-500 mt-1">{errori.ora_fine}</p>}
-            </div>
+                className="w-4 h-4 rounded border-gray-300 text-[#1E3A5F] focus:ring-[#1E3A5F]"
+              />
+              <span className="text-xs text-gray-500">Data di fine diversa</span>
+            </label>
           </div>
 
           {/* Note */}
