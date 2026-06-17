@@ -216,6 +216,7 @@ export async function POST(request: NextRequest) {
       cliente_dettagli,
       indirizzo,
       data,
+      data_fine,       // opzionale, per appuntamenti multi-giorno
       ora_inizio,
       ora_fine,
       note,
@@ -237,12 +238,16 @@ export async function POST(request: NextRequest) {
     const guestEmails = resolveEmails(guestList)
     const icsUid = randomUUID()
 
+    // Normalizza data_fine: solo se è una stringa non vuota e successiva a data
+    const dataFineNorm: string | null = (typeof data_fine === 'string' && data_fine && data_fine > data) ? data_fine : null
+
     const appData = {
       cliente_nome,
       cliente_telefono: cliente_telefono ?? '',
       cliente_dettagli: cliente_dettagli ?? '',
       indirizzo: indirizzo ?? '',
       data,
+      data_fine: dataFineNorm,
       ora_inizio,
       ora_fine,
       note: note ?? '',
@@ -271,6 +276,7 @@ export async function POST(request: NextRequest) {
       cliente_nome,
       cliente_telefono: cliente_telefono ?? '',
       data,
+      data_fine: dataFineNorm,
       ora_inizio,
       ora_fine,
       note: note ?? '',

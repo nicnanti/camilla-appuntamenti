@@ -80,6 +80,7 @@ function mappaAppuntamento(record: Airtable.Record<Airtable.FieldSet>): Appuntam
     cliente_nome: (f.cliente_nome as string) ?? '',
     cliente_telefono: (f.cliente_telefono as string) ?? '',
     data: (f.data as string) ?? '',
+    data_fine: (f.data_fine as string) || undefined,
     ora_inizio: (f.ora_inizio as string) ?? '',
     ora_fine: (f.ora_fine as string) ?? '',
     tipo: (f.tipo as string) ?? '',
@@ -156,7 +157,7 @@ export async function getAppuntamentoById(id: string): Promise<Appuntamento> {
 export async function creaAppuntamento(
   dati: Omit<Appuntamento, 'id' | 'created_at' | 'reminder_sent' | 'stato'>
 ): Promise<Appuntamento> {
-  const record = await tabellaAppuntamenti.create({
+  const payload: Record<string, unknown> = {
     cliente_nome: dati.cliente_nome,
     cliente_telefono: dati.cliente_telefono,
     data: dati.data,
@@ -171,8 +172,10 @@ export async function creaAppuntamento(
     stato: 'Confermato',
     ics_uid: dati.ics_uid ?? '',
     ics_sequence: dati.ics_sequence ?? 0,
-    invitati: stringifyInvitati(dati.invitati),
-  })
+  }
+  assegnaCampoData(payload, 'data_fine', dati.data_fine)
+  payload.invitati = stringifyInvitati(dati.invitati)
+  const record = await tabellaAppuntamenti.create(payload as Airtable.FieldSet)
   return mappaAppuntamento(record)
 }
 
@@ -195,6 +198,7 @@ export async function aggiornaAppuntamento(
   if (dati.ics_sequence !== undefined) campi.ics_sequence = dati.ics_sequence
   if (dati.invitati !== undefined) campi.invitati = stringifyInvitati(dati.invitati)
   if (dati.indirizzo !== undefined) campi.location = dati.indirizzo
+  assegnaCampoData(campi, 'data_fine', dati.data_fine)
 
   const record = await tabellaAppuntamenti.update(id, campi as Airtable.FieldSet)
   return mappaAppuntamento(record)
@@ -209,7 +213,7 @@ export async function eliminaAppuntamento(id: string): Promise<void> {
 export async function creaProssimoAppuntamento(
   app: Omit<Appuntamento, 'id' | 'created_at' | 'reminder_sent' | 'stato'>,
 ): Promise<void> {
-  await tabellaProssimiAppuntamenti.create({
+  const payload: Record<string, unknown> = {
     cliente_nome: app.cliente_nome,
     cliente_telefono: app.cliente_telefono,
     data: app.data,
@@ -225,7 +229,9 @@ export async function creaProssimoAppuntamento(
     ics_uid: app.ics_uid ?? '',
     ics_sequence: app.ics_sequence ?? 0,
     invitati: stringifyInvitati(app.invitati),
-  })
+  }
+  assegnaCampoData(payload, 'data_fine', app.data_fine)
+  await tabellaProssimiAppuntamenti.create(payload as Airtable.FieldSet)
 }
 
 export async function aggiornaProssimoAppuntamentoByGcalId(
@@ -255,6 +261,7 @@ export async function aggiornaProssimoAppuntamentoByGcalId(
   if (dati.ics_sequence !== undefined) campi.ics_sequence = dati.ics_sequence
   if (dati.invitati !== undefined) campi.invitati = stringifyInvitati(dati.invitati)
   if (dati.indirizzo !== undefined) campi.location = dati.indirizzo
+  assegnaCampoData(campi, 'data_fine', dati.data_fine)
 
   await tabellaProssimiAppuntamenti.update(records[0].id, campi as Airtable.FieldSet)
 }

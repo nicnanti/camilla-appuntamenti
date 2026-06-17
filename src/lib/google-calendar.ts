@@ -52,6 +52,9 @@ export async function creaEventoCalendar(
 ): Promise<string> {
   const calendar = getCalendar()
 
+  // Per appuntamenti multi-giorno: end usa data_fine, altrimenti stesso giorno di start.
+  const dataFineEvento = (app.data_fine && app.data_fine > app.data) ? app.data_fine : app.data
+
   // Niente attendees né sendUpdates: gli inviti email li manda nodemailer dall'host SMTP.
   const requestBody: Record<string, unknown> = {
     summary: costruisciTitoloEvento(app),
@@ -61,7 +64,7 @@ export async function creaEventoCalendar(
       timeZone: 'Europe/Rome',
     },
     end: {
-      dateTime: toGoogleDateTime(app.data, app.ora_fine),
+      dateTime: toGoogleDateTime(dataFineEvento, app.ora_fine),
       timeZone: 'Europe/Rome',
     },
     reminders: {
@@ -106,8 +109,10 @@ export async function aggiornaEventoCalendar(
   }
 
   if (app.data && app.ora_fine) {
+    // Multi-giorno: usa data_fine se presente e successiva a data, altrimenti stessa data.
+    const dataFineEvento = (app.data_fine && app.data_fine > app.data) ? app.data_fine : app.data
     aggiornamenti.end = {
-      dateTime: toGoogleDateTime(app.data, app.ora_fine),
+      dateTime: toGoogleDateTime(dataFineEvento, app.ora_fine),
       timeZone: 'Europe/Rome',
     }
   }

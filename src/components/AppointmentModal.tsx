@@ -22,6 +22,7 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
     cliente_telefono: appuntamento.cliente_telefono,
     note: appuntamento.note ?? '',
     data: appuntamento.data,
+    data_fine: appuntamento.data_fine ?? '',
     ora_inizio: appuntamento.ora_inizio,
     ora_fine: appuntamento.ora_fine,
     indirizzo: appuntamento.indirizzo ?? '',
@@ -31,6 +32,8 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
   const aggiorna = async () => {
     setLoading(true)
     try {
+      // Normalizza data_fine: null se vuota o uguale alla data inizio
+      const dataFineNorm = form.data_fine && form.data_fine > form.data ? form.data_fine : null
       const res = await fetch('/api/appuntamenti', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -42,6 +45,7 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
           guests: appuntamento.guests,
           professionista: appuntamento.professionista,
           ...form,
+          data_fine: dataFineNorm,
         }),
       })
       if (!res.ok) throw new Error()
@@ -186,7 +190,14 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
           {/* ── Vista Dettagli ── */}
           {modalita === 'dettagli' && (
             <div className="space-y-4">
-              <InfoRiga label="Data" valore={formatData(appuntamento.data)} />
+              {appuntamento.data_fine && appuntamento.data_fine > appuntamento.data ? (
+                <>
+                  <InfoRiga label="Data inizio" valore={formatData(appuntamento.data)} />
+                  <InfoRiga label="Data fine" valore={formatData(appuntamento.data_fine)} />
+                </>
+              ) : (
+                <InfoRiga label="Data" valore={formatData(appuntamento.data)} />
+              )}
               <InfoRiga label="Orario" valore={`${appuntamento.ora_inizio} – ${appuntamento.ora_fine}`} />
               {appuntamento.cliente_telefono && (
                 <InfoRiga label="Telefono" valore={appuntamento.cliente_telefono} />
@@ -261,6 +272,34 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
                   onAggiungi={(inv: Invitato) => setForm((prev) => ({ ...prev, invitati: [...prev.invitati, inv] }))}
                   onRimuovi={(idx) => setForm((prev) => ({ ...prev, invitati: prev.invitati.filter((_, i) => i !== idx) }))}
                 />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Data inizio</label>
+                  <input
+                    type="date"
+                    className="input-field"
+                    value={form.data}
+                    onChange={(e) => {
+                      const nuovaData = e.target.value
+                      // Se data_fine diventa precedente, sgancia
+                      const dataFineAggiornata = form.data_fine && form.data_fine < nuovaData ? '' : form.data_fine
+                      setForm({ ...form, data: nuovaData, data_fine: dataFineAggiornata })
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                    Data fine <span className="text-gray-300 font-normal">(opz.)</span>
+                  </label>
+                  <input
+                    type="date"
+                    className="input-field"
+                    value={form.data_fine}
+                    min={form.data}
+                    onChange={(e) => setForm({ ...form, data_fine: e.target.value })}
+                  />
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1.5">Note</label>

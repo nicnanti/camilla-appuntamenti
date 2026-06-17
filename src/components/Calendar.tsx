@@ -51,6 +51,10 @@ function durataInMinuti(inizio: string, fine: string): number {
   return Math.max(0, (h2 * 60 + m2) - (h1 * 60 + m1))
 }
 
+function isMultiGiorno(app: Appuntamento): boolean {
+  return !!(app.data_fine && app.data_fine > app.data)
+}
+
 // Estrae i professionisti coinvolti (Camilla, Giacomo) sia dal campo professionista
 // sia dalle chiavi del gcalId JSON sia dalle email nei guests.
 const EMAIL_CAMILLA = 'camilla.ghisleni1@gmail.com'
@@ -312,7 +316,14 @@ export default function Calendar() {
 
   const getAppPerGiorno = (data: Date) => {
     const dataStr = ymd(data)
-    return appuntamenti.filter((a) => a.data === dataStr && a.stato !== 'Cancellato')
+    return appuntamenti.filter((a) => {
+      if (a.stato === 'Cancellato') return false
+      // Multi-giorno: il giorno deve cadere nel range [a.data .. a.data_fine] inclusi
+      if (a.data_fine && a.data_fine > a.data) {
+        return dataStr >= a.data && dataStr <= a.data_fine
+      }
+      return a.data === dataStr
+    })
   }
 
   const isOggi = (data: Date) => isStessoGiorno(data, oggi)
@@ -461,6 +472,7 @@ export default function Calendar() {
                     <div className="space-y-0.5 flex-1">
                       {apps.slice(0, 3).map((app) => {
                         const colori = getColoriApp(app, filtroSingolo)
+                        const multi = isMultiGiorno(app)
                         return (
                           <div
                             key={app.id}
@@ -471,6 +483,7 @@ export default function Calendar() {
                           >
                             <div className={clsx('w-1.5 h-1.5 rounded-full flex-shrink-0', colori.dot)} />
                             <span className="truncate font-medium">
+                              {multi && <span className="mr-0.5" title="Multi-giorno">📅</span>}
                               {app.ora_inizio} {app.cliente_nome.split(' ')[0]}
                               {colori.isGuest && <span className="ml-1 opacity-70">·ospite</span>}
                             </span>
@@ -588,6 +601,7 @@ function SettimanaView({ giorni, getAppPerGiorno, isOggi, filtroSingolo, onSelez
               {apps.map((app) => {
                 const colori = getColoriApp(app, filtroSingolo)
                 const compatto = durataInMinuti(app.ora_inizio, app.ora_fine) <= 30
+                const multi = isMultiGiorno(app)
                 return (
                   <button
                     key={app.id}
@@ -604,6 +618,7 @@ function SettimanaView({ giorni, getAppPerGiorno, isOggi, filtroSingolo, onSelez
                   >
                     {compatto ? (
                       <p className="text-[10px] truncate leading-none whitespace-nowrap">
+                        {multi && <span className="mr-0.5" title="Multi-giorno">📅</span>}
                         <span className="opacity-70">{app.ora_inizio}</span>{' '}
                         <span className="font-semibold">{app.cliente_nome}</span>
                         {colori.isGuest && <span className="ml-1 text-[9px] opacity-70 uppercase">·osp</span>}
@@ -612,6 +627,7 @@ function SettimanaView({ giorni, getAppPerGiorno, isOggi, filtroSingolo, onSelez
                       <>
                         <p className="text-[11px] opacity-70 leading-tight truncate">{app.ora_inizio}</p>
                         <p className="text-[11px] font-semibold truncate leading-tight">
+                          {multi && <span className="mr-0.5" title="Multi-giorno">📅</span>}
                           {app.cliente_nome}
                         </p>
                         {colori.isGuest && (
@@ -670,6 +686,7 @@ function GiornoView({ data, appuntamenti, isOggi, filtroSingolo, onSeleziona }: 
           {appuntamenti.map((app) => {
             const colori = getColoriApp(app, filtroSingolo)
             const compatto = durataInMinuti(app.ora_inizio, app.ora_fine) <= 30
+            const multi = isMultiGiorno(app)
             return (
               <button
                 key={app.id}
@@ -686,6 +703,7 @@ function GiornoView({ data, appuntamenti, isOggi, filtroSingolo, onSeleziona }: 
               >
                 {compatto ? (
                   <p className="text-xs truncate leading-tight whitespace-nowrap">
+                    {multi && <span className="mr-0.5" title="Multi-giorno">📅</span>}
                     <span className="opacity-70 font-normal">{app.ora_inizio}–{app.ora_fine}</span>{' '}
                     <span className="font-semibold">{app.cliente_nome}</span>
                     {colori.isGuest && <span className="ml-1.5 text-[10px] opacity-70 uppercase tracking-wider">ospite</span>}
@@ -693,6 +711,7 @@ function GiornoView({ data, appuntamenti, isOggi, filtroSingolo, onSeleziona }: 
                 ) : (
                   <>
                     <p className="text-sm font-semibold truncate leading-tight">
+                      {multi && <span className="mr-1" title="Multi-giorno">📅</span>}
                       {app.cliente_nome}
                       {colori.isGuest && <span className="ml-2 text-[10px] opacity-70 uppercase tracking-wider">ospite</span>}
                     </p>

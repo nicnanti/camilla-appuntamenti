@@ -9,7 +9,8 @@ export interface Appuntamento {
   cliente_nome: string
   cliente_telefono: string
   cliente_dettagli?: string
-  data: string            // formato YYYY-MM-DD
+  data: string            // formato YYYY-MM-DD (data inizio)
+  data_fine?: string | null  // formato YYYY-MM-DD (opzionale, per appuntamenti multi-giorno)
   ora_inizio: string      // formato HH:MM
   ora_fine: string        // formato HH:MM
   tipo?: string           // legacy, non più usato nei nuovi record

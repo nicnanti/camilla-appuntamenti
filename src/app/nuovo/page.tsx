@@ -34,6 +34,7 @@ interface FormState {
   cliente_dettagli: string
   cliente_indirizzo: string
   data: string
+  data_fine: string  // opzionale; '' = appuntamento di un solo giorno
   ora_inizio: string
   ora_fine: string
   note: string
@@ -46,6 +47,7 @@ interface Errori {
   professionista?: string
   cliente_nome?: string
   data?: string
+  data_fine?: string
   ora_fine?: string
 }
 
@@ -90,6 +92,7 @@ export default function PaginaNuovoAppuntamento() {
     cliente_dettagli: '',
     cliente_indirizzo: '',
     data: oggi,
+    data_fine: '',
     ora_inizio: '09:00',
     ora_fine: '10:00',
     note: '',
@@ -120,6 +123,9 @@ export default function PaginaNuovoAppuntamento() {
     if (!form.professionista) e.professionista = 'Seleziona un professionista'
     if (!form.cliente_nome.trim()) e.cliente_nome = 'Inserisci il nome del cliente'
     if (!form.data) e.data = 'Seleziona una data'
+    if (form.data_fine && form.data_fine < form.data) {
+      e.data_fine = 'La data fine non può essere precedente alla data inizio'
+    }
     if (form.ora_inizio >= form.ora_fine) e.ora_fine = "L'ora di fine deve essere dopo l'inizio"
     setErrori(e)
     return Object.keys(e).length === 0
@@ -139,6 +145,8 @@ export default function PaginaNuovoAppuntamento() {
           cliente_dettagli: form.cliente_dettagli,
           indirizzo: form.cliente_indirizzo,
           data: form.data,
+          // data_fine solo se valorizzata e successiva a data
+          data_fine: form.data_fine && form.data_fine > form.data ? form.data_fine : null,
           ora_inizio: form.ora_inizio,
           ora_fine: form.ora_fine,
           note: form.note,
@@ -254,18 +262,39 @@ export default function PaginaNuovoAppuntamento() {
             />
           </div>
 
-          {/* Calendario */}
+          {/* Data inizio */}
           <div className="px-4 py-3">
+            <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1.5">Data inizio</p>
             <DatePicker
               value={form.data}
               min={oggi}
               errore={!!errori.data}
               onChange={(data) => {
-                setForm({ ...form, data })
+                // Se data fine diventa precedente, sgancia
+                const data_fine = form.data_fine && form.data_fine < data ? '' : form.data_fine
+                setForm({ ...form, data, data_fine })
                 if (errori.data) setErrori({ ...errori, data: undefined })
+                if (errori.data_fine) setErrori({ ...errori, data_fine: undefined })
               }}
             />
             {errori.data && <p className="text-xs text-red-500 mt-1">{errori.data}</p>}
+          </div>
+
+          {/* Data fine (opzionale, per appuntamenti multi-giorno) */}
+          <div className="px-4 py-3">
+            <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1.5">
+              Data fine <span className="text-gray-300 normal-case tracking-normal">(opzionale, per multi-giorno)</span>
+            </p>
+            <DatePicker
+              value={form.data_fine}
+              min={form.data || oggi}
+              errore={!!errori.data_fine}
+              onChange={(data_fine) => {
+                setForm({ ...form, data_fine })
+                if (errori.data_fine) setErrori({ ...errori, data_fine: undefined })
+              }}
+            />
+            {errori.data_fine && <p className="text-xs text-red-500 mt-1">{errori.data_fine}</p>}
           </div>
 
           {/* Orario */}
