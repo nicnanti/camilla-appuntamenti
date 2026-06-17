@@ -88,6 +88,7 @@ function mappaAppuntamento(record: Airtable.Record<Airtable.FieldSet>): Appuntam
     professionista: entry?.professionista ?? '',
     host: (f.host as string) ?? '',
     guests: (f.guests as string) ?? '',
+    indirizzo: (f.location as string) ?? '',
     reminder_sent: (f.reminder_sent as boolean) ?? false,
     reminder_sent_at: (f.reminder_sent_at as string) ?? '',
     stato: (f.stato as Appuntamento['stato']) ?? 'Confermato',
@@ -165,6 +166,7 @@ export async function creaAppuntamento(
     google_calendar_event_id: dati.google_calendar_event_id ?? '',
     host: dati.host ?? '',
     guests: dati.guests ?? '',
+    location: dati.indirizzo ?? '',
     reminder_sent: false,
     stato: 'Confermato',
     ics_uid: dati.ics_uid ?? '',
@@ -192,6 +194,7 @@ export async function aggiornaAppuntamento(
   if (dati.ics_uid !== undefined) campi.ics_uid = dati.ics_uid
   if (dati.ics_sequence !== undefined) campi.ics_sequence = dati.ics_sequence
   if (dati.invitati !== undefined) campi.invitati = stringifyInvitati(dati.invitati)
+  if (dati.indirizzo !== undefined) campi.location = dati.indirizzo
 
   const record = await tabellaAppuntamenti.update(id, campi as Airtable.FieldSet)
   return mappaAppuntamento(record)
@@ -216,6 +219,7 @@ export async function creaProssimoAppuntamento(
     google_calendar_event_id: app.google_calendar_event_id ?? '',
     host: app.host ?? '',
     guests: app.guests ?? '',
+    location: app.indirizzo ?? '',
     reminder_sent: false,
     stato: 'Confermato',
     ics_uid: app.ics_uid ?? '',
@@ -250,6 +254,7 @@ export async function aggiornaProssimoAppuntamentoByGcalId(
   if (dati.ics_uid !== undefined) campi.ics_uid = dati.ics_uid
   if (dati.ics_sequence !== undefined) campi.ics_sequence = dati.ics_sequence
   if (dati.invitati !== undefined) campi.invitati = stringifyInvitati(dati.invitati)
+  if (dati.indirizzo !== undefined) campi.location = dati.indirizzo
 
   await tabellaProssimiAppuntamenti.update(records[0].id, campi as Airtable.FieldSet)
 }

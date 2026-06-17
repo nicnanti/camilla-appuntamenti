@@ -265,6 +265,8 @@ export async function POST(request: NextRequest) {
 
     // ── Airtable: ENTRAMBE le tabelle in PARALLELO ────────────────────────────
     const tAt = Date.now()
+    console.log('[POST] body.indirizzo:', indirizzo ?? '(vuoto)')
+
     const datiCondivisi = {
       cliente_nome,
       cliente_telefono: cliente_telefono ?? '',
@@ -275,10 +277,12 @@ export async function POST(request: NextRequest) {
       google_calendar_event_id: gcalIdToStore,
       host: hostEmail,
       guests: guestEmails.join(','),
+      indirizzo: indirizzo ?? '',
       ics_uid: icsUid,
       ics_sequence: 0,
       invitati: invitatiList,
     }
+    console.log('[POST] payload Airtable (location):', datiCondivisi.indirizzo)
     const [appuntamento] = await Promise.all([
       creaAppuntamento(datiCondivisi),
       creaProssimoAppuntamento(datiCondivisi)
