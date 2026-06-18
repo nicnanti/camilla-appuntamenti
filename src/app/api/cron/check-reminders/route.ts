@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { eseguiCheckReminders } from '@/lib/reminders'
+import { getDataTarget } from '@/lib/sendpulse'
 
-// GET /api/cron/check-reminders?secret=...
+// GET /api/cron/check-reminders?secret=...&data=YYYY-MM-DD
+// `data` opzionale: override della data target (utile per test manuali).
+// Se omesso, viene calcolata in automatico da getDataTarget (lun→mar, ven→lun, ecc.).
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -14,7 +17,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ errore: 'Credenziali SendPulse non configurate' }, { status: 500 })
     }
 
-    const risultato = await eseguiCheckReminders()
+    const dataParam = searchParams.get('data')
+    const dataTarget = dataParam || getDataTarget()
+    console.log(`[check-reminders] data target: ${dataTarget} ${dataParam ? '(override via query)' : '(auto)'}`)
+
+    const risultato = await eseguiCheckReminders({ dataTarget })
     return NextResponse.json(risultato)
   } catch (error) {
     console.error('Errore cron check-reminders:', error)
