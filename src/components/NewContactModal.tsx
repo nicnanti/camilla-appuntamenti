@@ -42,10 +42,13 @@ export default function NewContactModal({ onClose, onCreato, contattoEsistente }
     if (!valida()) return
     setLoading(true)
     try {
+      const bodyDaInviare = isEdit ? { id: contattoEsistente!.id, ...form } : form
+      console.log('[Modal] body inviato:', JSON.stringify(bodyDaInviare))
+      console.log('[Modal] dettagli:', JSON.stringify(form.dettagli), '| note:', JSON.stringify(form.note))
       const res = await fetch('/api/contatti', {
         method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(isEdit ? { id: contattoEsistente!.id, ...form } : form),
+        body: JSON.stringify(bodyDaInviare),
       })
       if (!res.ok) {
         const data = await res.json()

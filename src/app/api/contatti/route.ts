@@ -22,7 +22,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
+    console.log('[POST /api/contatti] body ricevuto:', JSON.stringify(body))
     const { nome, cognome, telefono, email, dettagli, note, indirizzo, comune, provincia, gruppo } = body
+    console.log('[POST /api/contatti] dettagli:', JSON.stringify(dettagli), '| note:', JSON.stringify(note))
 
     if (!nome || !cognome || !telefono) {
       return NextResponse.json(
@@ -34,7 +36,7 @@ export async function POST(request: NextRequest) {
     // Campi opzionali: undefined se vuoti → omessi dal payload Airtable (no stringa vuota)
     const omitIfEmpty = (v: unknown) => typeof v === 'string' && v.trim() ? v.trim() : undefined
 
-    const contatto = await creaContatto({
+    const datiPerCreate = {
       nome,
       cognome,
       telefono,
@@ -45,7 +47,9 @@ export async function POST(request: NextRequest) {
       comune:    omitIfEmpty(comune),
       provincia: omitIfEmpty(provincia),
       gruppo:    omitIfEmpty(gruppo),
-    })
+    }
+    console.log('[POST /api/contatti] dati passati a creaContatto:', JSON.stringify(datiPerCreate))
+    const contatto = await creaContatto(datiPerCreate)
     return NextResponse.json(contatto, { status: 201 })
   } catch (error) {
     console.error('Errore POST /api/contatti:', error)
@@ -60,12 +64,15 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json()
+    console.log('[PATCH /api/contatti] body ricevuto:', JSON.stringify(body))
     const { id, ...dati } = body
+    console.log('[PATCH /api/contatti] dettagli:', JSON.stringify(dati.dettagli), '| note:', JSON.stringify(dati.note))
 
     if (!id) {
       return NextResponse.json({ errore: 'ID mancante' }, { status: 400 })
     }
 
+    console.log('[PATCH /api/contatti] dati passati a aggiornaContatto (id=' + id + '):', JSON.stringify(dati))
     const contatto = await aggiornaContatto(id, dati)
     return NextResponse.json(contatto)
   } catch (error) {

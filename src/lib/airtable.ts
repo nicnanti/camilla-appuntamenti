@@ -324,7 +324,9 @@ export async function creaContatto(dati: Omit<Contatto, 'id' | 'created_at'>): P
   if (dati.dettagli !== undefined)  campi['dettagli']               = dati.dettagli
   if (dati.note !== undefined)      campi['note']                   = dati.note
 
+  console.log('[airtable] creaContatto payload finale:', JSON.stringify(campi))
   const record = await tabellaContatti.create(campi)
+  console.log('[airtable] creaContatto record creato — campi tornati da Airtable:', JSON.stringify(record.fields))
   return mappaContatto(record)
 }
 
@@ -345,7 +347,9 @@ export async function aggiornaContatto(
   if (dati.dettagli      !== undefined) campi['dettagli']               = dati.dettagli
   if (dati.note          !== undefined) campi['note']                   = dati.note
 
+  console.log('[airtable] aggiornaContatto payload finale (id=' + id + '):', JSON.stringify(campi))
   const record = await tabellaContatti.update(id, campi)
+  console.log('[airtable] aggiornaContatto record aggiornato — campi tornati da Airtable:', JSON.stringify(record.fields))
   return mappaContatto(record)
 }
 
