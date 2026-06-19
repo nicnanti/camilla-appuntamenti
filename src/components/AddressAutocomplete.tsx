@@ -25,13 +25,51 @@ function formatAddress(p: PhotonFeature['properties']): string {
   return parts.join(', ')
 }
 
+export interface AddressParts {
+  via: string         // street + housenumber, es. "Via Roma 1"
+  comune: string      // città
+  provincia: string   // sigla provincia (es. "MI") quando estraibile, altrimenti vuota
+  cap: string
+  stato: string
+}
+
 interface Props {
   value: string
   onChange: (val: string) => void
+  onSelectStructured?: (parts: AddressParts) => void
   placeholder?: string
 }
 
-export default function AddressAutocomplete({ value, onChange, placeholder }: Props) {
+// Tabella ricerca sigla provincia (Italia) a partire dal nome del capoluogo o area.
+// Lista parziale ma copre i casi più frequenti — utenti possono editare a mano per gli altri.
+const SIGLA_PROVINCIA: Record<string, string> = {
+  agrigento: 'AG', alessandria: 'AL', ancona: 'AN', aosta: 'AO', arezzo: 'AR', ascoli: 'AP', asti: 'AT', avellino: 'AV',
+  bari: 'BA', 'barletta-andria-trani': 'BT', belluno: 'BL', benevento: 'BN', bergamo: 'BG', biella: 'BI', bologna: 'BO',
+  bolzano: 'BZ', brescia: 'BS', brindisi: 'BR', cagliari: 'CA', caltanissetta: 'CL', campobasso: 'CB', caserta: 'CE',
+  catania: 'CT', catanzaro: 'CZ', chieti: 'CH', como: 'CO', cosenza: 'CS', cremona: 'CR', crotone: 'KR', cuneo: 'CN',
+  enna: 'EN', fermo: 'FM', ferrara: 'FE', firenze: 'FI', foggia: 'FG', forlì: 'FC', 'forlì-cesena': 'FC', frosinone: 'FR',
+  genova: 'GE', gorizia: 'GO', grosseto: 'GR', imperia: 'IM', isernia: 'IS', laquila: 'AQ', "l'aquila": 'AQ',
+  laspezia: 'SP', "la spezia": 'SP', latina: 'LT', lecce: 'LE', lecco: 'LC', livorno: 'LI', lodi: 'LO', lucca: 'LU',
+  macerata: 'MC', mantova: 'MN', massa: 'MS', 'massa-carrara': 'MS', matera: 'MT', messina: 'ME', milano: 'MI',
+  modena: 'MO', 'monza e brianza': 'MB', 'monza-brianza': 'MB', napoli: 'NA', novara: 'NO', nuoro: 'NU',
+  oristano: 'OR', padova: 'PD', palermo: 'PA', parma: 'PR', pavia: 'PV', perugia: 'PG', pesaro: 'PU', 'pesaro e urbino': 'PU',
+  pescara: 'PE', piacenza: 'PC', pisa: 'PI', pistoia: 'PT', pordenone: 'PN', potenza: 'PZ', prato: 'PO',
+  ragusa: 'RG', ravenna: 'RA', 'reggio calabria': 'RC', 'reggio emilia': 'RE', rieti: 'RI', rimini: 'RN', roma: 'RM',
+  rovigo: 'RO', salerno: 'SA', sassari: 'SS', savona: 'SV', siena: 'SI', siracusa: 'SR', sondrio: 'SO',
+  taranto: 'TA', teramo: 'TE', terni: 'TR', torino: 'TO', trapani: 'TP', trento: 'TN', treviso: 'TV', trieste: 'TS',
+  udine: 'UD', varese: 'VA', venezia: 'VE', verbania: 'VB', 'verbano-cusio-ossola': 'VB', vercelli: 'VC',
+  verona: 'VR', 'vibo valentia': 'VV', vicenza: 'VI', viterbo: 'VT',
+}
+
+function inferisciSiglaProvincia(stateOrCounty: string): string {
+  const key = stateOrCounty.toLowerCase().trim()
+  if (SIGLA_PROVINCIA[key]) return SIGLA_PROVINCIA[key]
+  // Prova a pulire prefissi tipo "città metropolitana di"
+  const clean = key.replace(/^(città metropolitana di|provincia di|provincia)\s+/i, '').trim()
+  return SIGLA_PROVINCIA[clean] ?? ''
+}
+
+export default function AddressAutocomplete({ value, onChange, onSelectStructured, placeholder }: Props) {
   const [risultati, setRisultati] = useState<PhotonFeature[]>([])
   const [aperto, setAperto] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -91,6 +129,21 @@ export default function AddressAutocomplete({ value, onChange, placeholder }: Pr
     const addr = formatAddress(f.properties)
     sopprimiSearch.current = true // evita che il debounce ri-cerchi sul nuovo valore
     onChange(addr)
+    if (onSelectStructured) {
+      const p = f.properties
+      const via = [p.street ?? p.name, p.housenumber].filter(Boolean).join(' ').trim()
+      const comune = p.city ?? ''
+      // Photon a volte mette il nome provincia in `state` o nella `name` quando l'address è generico.
+      // Proviamo prima state, poi name come fallback.
+      const provincia = inferisciSiglaProvincia(p.state ?? '') || inferisciSiglaProvincia(comune)
+      onSelectStructured({
+        via,
+        comune,
+        provincia,
+        cap: p.postcode ?? '',
+        stato: p.state ?? '',
+      })
+    }
     setAperto(false)
     setRisultati([])
   }

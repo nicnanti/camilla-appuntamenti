@@ -22,18 +22,14 @@ function Avatar({ nome, cognome }: { nome: string; cognome: string }) {
 }
 
 const COL = 'grid-cols-[32px_1fr_1fr_1fr_1fr_1.5fr_64px]'
-const HEADER_COLS = ['Nome', 'Cognome', 'Telefono', 'Dettagli', 'Note', '']
+const HEADER_COLS = ['Nome', 'Cognome', 'Telefono', 'Indirizzo', 'Note', '']
 
 export default function PaginaContatti() {
   const [contatti, setContatti] = useState<Contatto[]>([])
   const [loading, setLoading] = useState(true)
   const [ricerca, setRicerca] = useState('')
   const [mostraModal, setMostraModal] = useState(false)
-
-  // Edit mode
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editForm, setEditForm] = useState<Partial<Contatto>>({})
-  const [saving, setSaving] = useState(false)
+  const [contattoInModifica, setContattoInModifica] = useState<Contatto | null>(null)
   const [eliminando, setEliminando] = useState<string | null>(null)
 
   const carica = useCallback(async () => {
@@ -55,45 +51,6 @@ export default function PaginaContatti() {
     return () => clearTimeout(timer)
   }, [carica])
 
-  const avviaEdit = (c: Contatto) => {
-    setEditingId(c.id)
-    setEditForm({
-      nome: c.nome,
-      cognome: c.cognome,
-      telefono: c.telefono,
-      email: c.email,
-      dettagli: c.dettagli ?? '',
-      nota: c.nota ?? '',
-    })
-  }
-
-  const annullaEdit = () => {
-    setEditingId(null)
-    setEditForm({})
-  }
-
-  const salvaEdit = async () => {
-    if (!editingId) return
-    setSaving(true)
-    try {
-      const res = await fetch('/api/contatti', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: editingId, ...editForm }),
-      })
-      const payload = await res.json()
-      if (!res.ok) throw new Error(payload.errore ?? 'Errore sconosciuto')
-      const aggiornato: Contatto = payload
-      setContatti((prev) => prev.map((c) => c.id === editingId ? aggiornato : c))
-      setEditingId(null)
-      toast.success('Contatto aggiornato')
-    } catch {
-      toast.error('Errore durante il salvataggio')
-    } finally {
-      setSaving(false)
-    }
-  }
-
   const elimina = async (c: Contatto) => {
     if (!confirm(`Eliminare ${c.nome} ${c.cognome}? L'operazione è irreversibile.`)) return
     setEliminando(c.id)
@@ -108,10 +65,6 @@ export default function PaginaContatti() {
       setEliminando(null)
     }
   }
-
-  const ef = (field: keyof Contatto) => (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => setEditForm({ ...editForm, [field]: e.target.value })
 
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto">
@@ -189,154 +142,58 @@ export default function PaginaContatti() {
           </div>
         ) : (
           <div className="divide-y divide-[#F3F4F6]">
-            {contatti.map((c) => {
-              const isEditing = editingId === c.id
-
-              return (
-                <div
-                  key={c.id}
-                  className={`grid ${COL} gap-3 px-4 py-3 items-center transition-colors ${isEditing ? 'bg-[#F8FAFF]' : 'hover:bg-[#FAFAFA]'}`}
-                >
-                  {/* Avatar */}
-                  <Avatar nome={c.nome} cognome={c.cognome} />
-
-                  {/* Nome */}
-                  {isEditing ? (
-                    <input
-                      className="input-field text-sm py-1.5"
-                      value={editForm.nome ?? ''}
-                      onChange={ef('nome')}
-                      placeholder="Nome"
-                    />
+            {contatti.map((c) => (
+              <div
+                key={c.id}
+                className={`grid ${COL} gap-3 px-4 py-3 items-center transition-colors hover:bg-[#FAFAFA]`}
+              >
+                <Avatar nome={c.nome} cognome={c.cognome} />
+                <p className="text-sm font-medium text-[#1A1A1A] truncate">{c.nome}</p>
+                <p className="text-sm font-medium text-[#1A1A1A] truncate">{c.cognome}</p>
+                <div>
+                  {c.telefono ? (
+                    <a href={`tel:${c.telefono}`} className="text-sm text-[#3B82F6] hover:underline">
+                      {c.telefono}
+                    </a>
                   ) : (
-                    <p className="text-sm font-medium text-[#1A1A1A] truncate">{c.nome}</p>
+                    <span className="text-sm text-gray-300">—</span>
                   )}
-
-                  {/* Cognome */}
-                  {isEditing ? (
-                    <input
-                      className="input-field text-sm py-1.5"
-                      value={editForm.cognome ?? ''}
-                      onChange={ef('cognome')}
-                      placeholder="Cognome"
-                    />
-                  ) : (
-                    <p className="text-sm font-medium text-[#1A1A1A] truncate">{c.cognome}</p>
-                  )}
-
-                  {/* Telefono */}
-                  {isEditing ? (
-                    <input
-                      type="tel"
-                      className="input-field text-sm py-1.5"
-                      value={editForm.telefono ?? ''}
-                      onChange={ef('telefono')}
-                      placeholder="+39"
-                    />
-                  ) : (
-                    <div>
-                      {c.telefono ? (
-                        <a href={`tel:${c.telefono}`} className="text-sm text-[#3B82F6] hover:underline">
-                          {c.telefono}
-                        </a>
-                      ) : (
-                        <span className="text-sm text-gray-300">—</span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Dettagli */}
-                  {isEditing ? (
-                    <input
-                      className="input-field text-sm py-1.5"
-                      value={editForm.dettagli ?? ''}
-                      onChange={ef('dettagli')}
-                      placeholder="Es. nome figlio..."
-                    />
-                  ) : (
-                    <p className="text-sm text-gray-500 truncate">{c.dettagli || <span className="text-gray-300">—</span>}</p>
-                  )}
-
-                  {/* Nota */}
-                  {isEditing ? (
-                    <textarea
-                      className="input-field text-sm py-1.5 resize-none"
-                      rows={2}
-                      value={editForm.nota ?? ''}
-                      onChange={ef('nota')}
-                      placeholder="Aggiungi una nota..."
-                    />
-                  ) : (
-                    <p className="text-sm text-gray-500 line-clamp-2">{c.nota || <span className="text-gray-300">—</span>}</p>
-                  )}
-
-                  {/* Azioni */}
-                  <div className="flex items-center justify-end gap-1">
-                    {isEditing ? (
-                      <>
-                        {/* Salva */}
-                        <button
-                          onClick={salvaEdit}
-                          disabled={saving}
-                          className="w-7 h-7 flex items-center justify-center rounded-lg bg-[#1E3A5F] text-white hover:bg-[#162d4a] transition-colors"
-                          title="Salva"
-                        >
-                          {saving ? (
-                            <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                          ) : (
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="20 6 9 17 4 12"/>
-                            </svg>
-                          )}
-                        </button>
-                        {/* Annulla */}
-                        <button
-                          onClick={annullaEdit}
-                          className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"
-                          title="Annulla"
-                        >
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                          </svg>
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        {/* Modifica */}
-                        <button
-                          onClick={() => avviaEdit(c)}
-                          className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-[#1E3A5F] hover:bg-[#F0F4F8] transition-colors"
-                          title="Modifica"
-                        >
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                          </svg>
-                        </button>
-                        {/* Elimina */}
-                        <button
-                          onClick={() => elimina(c)}
-                          disabled={eliminando === c.id}
-                          className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors"
-                          title="Elimina"
-                        >
-                          {eliminando === c.id ? (
-                            <div className="w-3 h-3 border-2 border-red-300/30 border-t-red-400 rounded-full animate-spin" />
-                          ) : (
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="3 6 5 6 21 6"/>
-                              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                              <path d="M10 11v6"/><path d="M14 11v6"/>
-                              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-                            </svg>
-                          )}
-                        </button>
-                      </>
-                    )}
-                  </div>
                 </div>
-              )
-            })}
+                <p className="text-sm text-gray-500 truncate">
+                  {[c.indirizzo, c.comune].filter(Boolean).join(', ') || <span className="text-gray-300">—</span>}
+                </p>
+                <p className="text-sm text-gray-500 line-clamp-2">{c.nota || c.dettagli || <span className="text-gray-300">—</span>}</p>
+                <div className="flex items-center justify-end gap-1">
+                  <button
+                    onClick={() => setContattoInModifica(c)}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-[#1E3A5F] hover:bg-[#F0F4F8] transition-colors"
+                    title="Modifica"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => elimina(c)}
+                    disabled={eliminando === c.id}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors"
+                    title="Elimina"
+                  >
+                    {eliminando === c.id ? (
+                      <div className="w-3 h-3 border-2 border-red-300/30 border-t-red-400 rounded-full animate-spin" />
+                    ) : (
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                        <path d="M10 11v6"/><path d="M14 11v6"/>
+                        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -345,6 +202,14 @@ export default function PaginaContatti() {
         <NewContactModal
           onClose={() => setMostraModal(false)}
           onCreato={() => { setMostraModal(false); carica() }}
+        />
+      )}
+
+      {contattoInModifica && (
+        <NewContactModal
+          contattoEsistente={contattoInModifica}
+          onClose={() => setContattoInModifica(null)}
+          onCreato={() => { setContattoInModifica(null); carica() }}
         />
       )}
     </div>
