@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { nome, cognome, telefono, email, dettagli, nota, indirizzo, comune, provincia, gruppo } = body
+    const { nome, cognome, telefono, email, dettagli, note, indirizzo, comune, provincia, gruppo } = body
 
     if (!nome || !cognome || !telefono) {
       return NextResponse.json(
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // I 3 campi indirizzo: undefined se vuoti → creaContatto li omette dal payload Airtable
+    // Campi opzionali: undefined se vuoti → omessi dal payload Airtable (no stringa vuota)
     const omitIfEmpty = (v: unknown) => typeof v === 'string' && v.trim() ? v.trim() : undefined
 
     const contatto = await creaContatto({
@@ -39,8 +39,8 @@ export async function POST(request: NextRequest) {
       cognome,
       telefono,
       email: email ?? '',
-      dettagli: dettagli ?? '',
-      nota: nota ?? '',
+      dettagli:  omitIfEmpty(dettagli),
+      note:      omitIfEmpty(note),
       indirizzo: omitIfEmpty(indirizzo),
       comune:    omitIfEmpty(comune),
       provincia: omitIfEmpty(provincia),

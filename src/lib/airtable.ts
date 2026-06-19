@@ -113,8 +113,8 @@ function mappaContatto(record: Airtable.Record<Airtable.FieldSet>): Contatto {
     comune: (f['Comune di Residenza'] as string) ?? '',
     provincia: (f['Provincia'] as string) ?? '',
     gruppo: (f['gruppo'] as string) ?? '',
-    dettagli: '',
-    nota: '',
+    dettagli: (f['dettagli'] as string) ?? '',
+    note: (f['note'] as string) ?? '',
     created_at: '',
   }
 }
@@ -321,6 +321,8 @@ export async function creaContatto(dati: Omit<Contatto, 'id' | 'created_at'>): P
   if (dati.comune !== undefined)    campi['Comune di Residenza']    = dati.comune
   if (dati.provincia !== undefined) campi['Provincia']              = dati.provincia
   if (dati.gruppo !== undefined)    campi['gruppo']                 = dati.gruppo
+  if (dati.dettagli !== undefined)  campi['dettagli']               = dati.dettagli
+  if (dati.note !== undefined)      campi['note']                   = dati.note
 
   const record = await tabellaContatti.create(campi)
   return mappaContatto(record)
@@ -340,6 +342,8 @@ export async function aggiornaContatto(
   if (dati.comune        !== undefined) campi['Comune di Residenza']    = dati.comune
   if (dati.provincia     !== undefined) campi['Provincia']              = dati.provincia
   if (dati.gruppo        !== undefined) campi['gruppo']                 = dati.gruppo
+  if (dati.dettagli      !== undefined) campi['dettagli']               = dati.dettagli
+  if (dati.note          !== undefined) campi['note']                   = dati.note
 
   const record = await tabellaContatti.update(id, campi)
   return mappaContatto(record)

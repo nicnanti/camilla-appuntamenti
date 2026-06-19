@@ -21,8 +21,8 @@ function Avatar({ nome, cognome }: { nome: string; cognome: string }) {
   )
 }
 
-const COL = 'grid-cols-[32px_1fr_1fr_1fr_1fr_1.5fr_64px]'
-const HEADER_COLS = ['Nome', 'Cognome', 'Telefono', 'Indirizzo', 'Note', '']
+const COL = 'grid-cols-[32px_1fr_1fr_1fr_1fr_1fr_1.2fr_64px]'
+const HEADER_COLS = ['Nome', 'Cognome', 'Telefono', 'Indirizzo', 'Dettagli', 'Note', '']
 
 export default function PaginaContatti() {
   const [contatti, setContatti] = useState<Contatto[]>([])
@@ -162,7 +162,12 @@ export default function PaginaContatti() {
                 <p className="text-sm text-gray-500 truncate">
                   {[c.indirizzo, c.comune].filter(Boolean).join(', ') || <span className="text-gray-300">—</span>}
                 </p>
-                <p className="text-sm text-gray-500 line-clamp-2">{c.nota || c.dettagli || <span className="text-gray-300">—</span>}</p>
+                <p className="text-sm text-gray-500 truncate" title={c.dettagli ?? ''}>
+                  {c.dettagli || <span className="text-gray-300">—</span>}
+                </p>
+                <p className="text-sm text-gray-500 line-clamp-2" title={c.note ?? ''}>
+                  {c.note || <span className="text-gray-300">—</span>}
+                </p>
                 <div className="flex items-center justify-end gap-1">
                   <button
                     onClick={() => setContattoInModifica(c)}

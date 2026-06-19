@@ -39,7 +39,7 @@ export interface Contatto {
   dettagli?: string
   telefono: string
   email?: string
-  nota?: string
+  note?: string
   indirizzo?: string   // "Indirizzo di Residenza" — la via
   comune?: string      // "Comune di Residenza"
   provincia?: string

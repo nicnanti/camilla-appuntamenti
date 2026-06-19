@@ -19,7 +19,7 @@ export default function NewContactModal({ onClose, onCreato, contattoEsistente }
     telefono:  contattoEsistente?.telefono ?? '+39',
     email:     contattoEsistente?.email ?? '',
     dettagli:  contattoEsistente?.dettagli ?? '',
-    nota:      contattoEsistente?.nota ?? '',
+    note:      contattoEsistente?.note ?? '',
     indirizzo: contattoEsistente?.indirizzo ?? '',
     comune:    contattoEsistente?.comune ?? '',
     provincia: contattoEsistente?.provincia ?? '',
@@ -148,12 +148,24 @@ export default function NewContactModal({ onClose, onCreato, contattoEsistente }
 
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1.5">Dettagli</label>
-            <input className="input-field" placeholder="Es. nome figlio, riferimento..." value={form.dettagli} onChange={set('dettagli')} />
+            <textarea
+              className="input-field resize-none"
+              rows={2}
+              placeholder="Es. figlio di Alessia, ha un cane di nome Pippo..."
+              value={form.dettagli}
+              onChange={set('dettagli')}
+            />
           </div>
 
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1.5">Note</label>
-            <textarea className="input-field resize-none" rows={2} placeholder="Aggiungi una nota..." value={form.nota} onChange={set('nota')} />
+            <textarea
+              className="input-field resize-none"
+              rows={3}
+              placeholder="Aggiungi una nota..."
+              value={form.note}
+              onChange={set('note')}
+            />
           </div>
 
           <div className="flex gap-3 pt-1">
