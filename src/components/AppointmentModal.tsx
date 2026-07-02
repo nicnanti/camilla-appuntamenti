@@ -38,25 +38,34 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
     try {
       // Normalizza data_fine: solo se checkbox attiva E successiva alla data inizio
       const dataFineNorm = form.multiGiorno && form.data_fine && form.data_fine > form.data ? form.data_fine : null
+      const body = {
+        id: appuntamento.id,
+        google_calendar_event_id: appuntamento.google_calendar_event_id,
+        ics_uid: appuntamento.ics_uid,
+        ics_sequence: appuntamento.ics_sequence,
+        guests: appuntamento.guests,
+        professionista: appuntamento.professionista,
+        ...form,
+        data_fine: dataFineNorm,
+      }
+      console.log('[Modal Modifica] click Salva, invio PATCH:', body)
       const res = await fetch('/api/appuntamenti', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: appuntamento.id,
-          google_calendar_event_id: appuntamento.google_calendar_event_id,
-          ics_uid: appuntamento.ics_uid,
-          ics_sequence: appuntamento.ics_sequence,
-          guests: appuntamento.guests,
-          professionista: appuntamento.professionista,
-          ...form,
-          data_fine: dataFineNorm,
-        }),
+        body: JSON.stringify(body),
       })
-      if (!res.ok) throw new Error()
+      console.log('[Modal Modifica] risposta:', res.status, res.statusText)
+      if (!res.ok) {
+        let errBody = ''
+        try { errBody = await res.text() } catch {}
+        console.error('[Modal Modifica] body errore:', errBody)
+        throw new Error(`PATCH ${res.status}: ${errBody || res.statusText}`)
+      }
       toast.success('Appuntamento aggiornato')
       onAggiornato()
       onClose()
-    } catch {
+    } catch (err) {
+      console.error('[Modal Modifica] errore:', err)
       toast.error('Errore durante l\'aggiornamento')
     } finally {
       setLoading(false)
@@ -103,15 +112,31 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
     return `${day}/${m}/${y}`
   }
 
+  const EMAIL_CAMILLA = 'camilla.ghisleni1@gmail.com'
+  const EMAIL_GIACOMO = 'giacomo.ghisleni1@gmail.com'
+
+  // Fallback host: se professionista è vuoto lato server, deriva dalla prima chiave del gcalId JSON.
+  const derivaHost = (): string => {
+    if (appuntamento.professionista) return appuntamento.professionista
+    try {
+      const parsed = JSON.parse(appuntamento.google_calendar_event_id ?? '')
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && !parsed.eventId) {
+        const primaChiave = Object.keys(parsed).filter((k) => parsed[k])[0]
+        if (primaChiave === 'camilla' || primaChiave === 'giacomo') {
+          return primaChiave.charAt(0).toUpperCase() + primaChiave.slice(1)
+        }
+      }
+    } catch {}
+    return ''
+  }
+  const host = derivaHost()
+
   // Colore badge professionista (host)
-  const badgeClass = appuntamento.professionista === 'Giacomo'
+  const badgeClass = host === 'Giacomo'
     ? 'bg-emerald-100 text-emerald-800'
     : 'bg-blue-100 text-blue-800'
 
   // Calcola i guest professionisti (Camilla/Giacomo coinvolti ma non host)
-  const EMAIL_CAMILLA = 'camilla.ghisleni1@gmail.com'
-  const EMAIL_GIACOMO = 'giacomo.ghisleni1@gmail.com'
-  const host = appuntamento.professionista ?? ''
   const guestProf: string[] = (() => {
     const out: string[] = []
     const guestsLower = (appuntamento.guests ?? '').toLowerCase()
@@ -131,6 +156,17 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
     return out
   })()
 
+  // Log diagnostico
+  console.log('[Modal] appuntamento:', {
+    id: appuntamento.id,
+    cliente: appuntamento.cliente_nome,
+    professionista: appuntamento.professionista,
+    hostDerivato: host,
+    guestProf,
+    guests: appuntamento.guests,
+    google_calendar_event_id: appuntamento.google_calendar_event_id,
+  })
+
   return (
     <div
       className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
@@ -141,9 +177,9 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
         <div className="flex items-center justify-between p-6 border-b border-[#E5E7EB]">
           <div>
             <div className="flex flex-wrap items-center gap-1.5 mb-2">
-              {appuntamento.professionista && (
+              {host && (
                 <span className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full ${badgeClass}`}>
-                  {appuntamento.professionista}
+                  {host}
                   <span className="opacity-70 font-normal">(host)</span>
                 </span>
               )}
