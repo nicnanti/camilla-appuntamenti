@@ -320,6 +320,7 @@ export async function POST(request: NextRequest) {
         professionistaNome: prof,
         icsUid,
         icsSequence: 0,
+        invitati: invitatiList,
       }
       const destinatari = destinatariIcs(host, guestList)
       if (destinatari.length > 0) {
@@ -445,6 +446,7 @@ export async function PATCH(request: NextRequest) {
         professionistaNome: profEffettivo,
         icsUid: icsUidEffettivo,
         icsSequence: nuovaSequence,
+        invitati: Array.isArray(datiAggiornamento.invitati) ? datiAggiornamento.invitati : (appuntamento.invitati ?? []),
       }
       // I `guests` su Airtable sono email — derivo i nomi staff da lì
       const guestListPatch = nomiStaffDaGuestsField(guestEmailsPatch.join(','))
@@ -550,6 +552,7 @@ export async function DELETE(request: NextRequest) {
         professionistaNome: appPreDelete.professionista ?? '',
         icsUid: appPreDelete.ics_uid ?? '',
         icsSequence: (appPreDelete.ics_sequence ?? 0) + 1,
+        invitati: appPreDelete.invitati ?? [],
       }
       // Deriva i nomi staff dagli email salvati nel record
       const guestListDel = nomiStaffDaGuestsField(appPreDelete.guests ?? '')

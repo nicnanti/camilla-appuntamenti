@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer'
 import type SMTPTransport from 'nodemailer/lib/smtp-transport'
+import type { Invitato } from '@/types'
 
 interface DatiAppuntamento {
   cliente_nome: string
@@ -11,6 +12,40 @@ interface DatiAppuntamento {
   professionistaNome: string
   icsUid: string
   icsSequence: number
+  invitati?: Invitato[]
+}
+
+// ─── Rendering invitati ──────────────────────────────────────────────────────
+
+// Per body HTML (email)
+function invitatiHtml(invitati?: Invitato[]): string {
+  if (!invitati || invitati.length === 0) return ''
+  const items = invitati
+    .map((i) => `<li>${escapeHtml(i.nome)}${i.telefono ? ` — ${escapeHtml(i.telefono)}` : ''}</li>`)
+    .join('')
+  return `<p><strong>Invitati:</strong></p><ul>${items}</ul>`
+}
+
+// Per body testuale (email)
+function invitatiText(invitati?: Invitato[]): string {
+  if (!invitati || invitati.length === 0) return ''
+  const rows = invitati.map((i) => `- ${i.nome}${i.telefono ? ` (${i.telefono})` : ''}`).join('\n')
+  return `\nInvitati:\n${rows}`
+}
+
+// Per DESCRIPTION del file .ics (una riga sola)
+function invitatiIcs(invitati?: Invitato[]): string {
+  if (!invitati || invitati.length === 0) return ''
+  return invitati.map((i) => `${i.nome}${i.telefono ? ` (${i.telefono})` : ''}`).join(', ')
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -41,10 +76,12 @@ function generaIcs(
   const status  = method === 'CANCEL' ? 'CANCELLED' : 'CONFIRMED'
   const organizer = process.env.GMAIL_USER ?? 'nicola.nanti05@gmail.com'
 
+  const invitatiRiga = invitatiIcs(dati.invitati)
   const descrizione = [
     `Professionista: ${dati.professionistaNome}`,
     dati.cliente_telefono ? `Telefono: ${dati.cliente_telefono}` : '',
     dati.note ? `Note: ${dati.note}` : '',
+    invitatiRiga ? `Invitati: ${invitatiRiga}` : '',
   ].filter(Boolean).join('\\n')
 
   return [
@@ -193,8 +230,8 @@ export async function inviaInvitoCalendario(
       replyTo: user,
       to: emailAssistente,
       subject: `Nuovo appuntamento: ${dati.cliente_nome} — ${dataIt} ore ${dati.ora_inizio}`,
-      text: `Nuovo appuntamento\nCliente: ${dati.cliente_nome}\nData: ${dataIt}\nOra: ${dati.ora_inizio} - ${dati.ora_fine}\nProfessionista: ${dati.professionistaNome}`,
-      html: `<h3>Nuovo appuntamento</h3><p><strong>Cliente:</strong> ${dati.cliente_nome}</p><p><strong>Data:</strong> ${dataIt}</p><p><strong>Ora:</strong> ${dati.ora_inizio} - ${dati.ora_fine}</p><p><strong>Professionista:</strong> ${dati.professionistaNome}</p>`,
+      text: `Nuovo appuntamento\nCliente: ${dati.cliente_nome}\nData: ${dataIt}\nOra: ${dati.ora_inizio} - ${dati.ora_fine}\nProfessionista: ${dati.professionistaNome}${invitatiText(dati.invitati)}`,
+      html: `<h3>Nuovo appuntamento</h3><p><strong>Cliente:</strong> ${escapeHtml(dati.cliente_nome)}</p><p><strong>Data:</strong> ${escapeHtml(dataIt)}</p><p><strong>Ora:</strong> ${escapeHtml(dati.ora_inizio)} - ${escapeHtml(dati.ora_fine)}</p><p><strong>Professionista:</strong> ${escapeHtml(dati.professionistaNome)}</p>${invitatiHtml(dati.invitati)}`,
       icalEvent: {
         filename: 'invite.ics',
         method: 'REQUEST',
@@ -223,8 +260,8 @@ export async function inviaModificaCalendario(
       replyTo: user,
       to: emailAssistente,
       subject: `Appuntamento aggiornato: ${dati.cliente_nome} — ${dataIt} ore ${dati.ora_inizio}`,
-      text: `Appuntamento aggiornato\nCliente: ${dati.cliente_nome}\nData: ${dataIt}\nOra: ${dati.ora_inizio} - ${dati.ora_fine}\nProfessionista: ${dati.professionistaNome}`,
-      html: `<h3>Appuntamento aggiornato</h3><p><strong>Cliente:</strong> ${dati.cliente_nome}</p><p><strong>Data:</strong> ${dataIt}</p><p><strong>Ora:</strong> ${dati.ora_inizio} - ${dati.ora_fine}</p><p><strong>Professionista:</strong> ${dati.professionistaNome}</p>`,
+      text: `Appuntamento aggiornato\nCliente: ${dati.cliente_nome}\nData: ${dataIt}\nOra: ${dati.ora_inizio} - ${dati.ora_fine}\nProfessionista: ${dati.professionistaNome}${invitatiText(dati.invitati)}`,
+      html: `<h3>Appuntamento aggiornato</h3><p><strong>Cliente:</strong> ${escapeHtml(dati.cliente_nome)}</p><p><strong>Data:</strong> ${escapeHtml(dataIt)}</p><p><strong>Ora:</strong> ${escapeHtml(dati.ora_inizio)} - ${escapeHtml(dati.ora_fine)}</p><p><strong>Professionista:</strong> ${escapeHtml(dati.professionistaNome)}</p>${invitatiHtml(dati.invitati)}`,
       icalEvent: {
         filename: 'invite.ics',
         method: 'REQUEST',
@@ -253,8 +290,8 @@ export async function inviaCancellazioneCalendario(
       replyTo: user,
       to: emailAssistente,
       subject: `Appuntamento cancellato: ${dati.cliente_nome} — ${dataIt} ore ${dati.ora_inizio}`,
-      text: `Appuntamento cancellato\nCliente: ${dati.cliente_nome}\nData: ${dataIt}\nOra: ${dati.ora_inizio} - ${dati.ora_fine}\nProfessionista: ${dati.professionistaNome}`,
-      html: `<h3>Appuntamento cancellato</h3><p><strong>Cliente:</strong> ${dati.cliente_nome}</p><p><strong>Data:</strong> ${dataIt}</p><p><strong>Ora:</strong> ${dati.ora_inizio} - ${dati.ora_fine}</p><p><strong>Professionista:</strong> ${dati.professionistaNome}</p>`,
+      text: `Appuntamento cancellato\nCliente: ${dati.cliente_nome}\nData: ${dataIt}\nOra: ${dati.ora_inizio} - ${dati.ora_fine}\nProfessionista: ${dati.professionistaNome}${invitatiText(dati.invitati)}`,
+      html: `<h3>Appuntamento cancellato</h3><p><strong>Cliente:</strong> ${escapeHtml(dati.cliente_nome)}</p><p><strong>Data:</strong> ${escapeHtml(dataIt)}</p><p><strong>Ora:</strong> ${escapeHtml(dati.ora_inizio)} - ${escapeHtml(dati.ora_fine)}</p><p><strong>Professionista:</strong> ${escapeHtml(dati.professionistaNome)}</p>${invitatiHtml(dati.invitati)}`,
       icalEvent: {
         filename: 'invite.ics',
         method: 'CANCEL',
