@@ -14,7 +14,7 @@ interface Props {
 }
 
 export default function AppointmentModal({ appuntamento, onClose, onAggiornato }: Props) {
-  const [modalita, setModalita] = useState<'dettagli' | 'modifica' | 'sposta'>('dettagli')
+  const [modalita, setModalita] = useState<'dettagli' | 'modifica'>('dettagli')
   const [loading, setLoading] = useState(false)
 
   const dataFineIniziale = appuntamento.data_fine ?? ''
@@ -212,7 +212,7 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
 
         {/* Navigazione schede */}
         <div className="flex border-b border-[#E5E7EB] px-6">
-          {(['dettagli', 'modifica', 'sposta'] as const).map((tab) => (
+          {(['dettagli', 'modifica'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setModalita(tab)}
@@ -316,41 +316,90 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
                 />
               </div>
               {form.multiGiorno ? (
-                <div className="grid grid-cols-2 gap-3">
+                <>
+                  {/* 2 calendari + 2 orari affiancati */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1.5">Data inizio</label>
+                      <input
+                        type="date"
+                        className="input-field"
+                        value={form.data}
+                        onChange={(e) => {
+                          const nuovaData = e.target.value
+                          const dataFineAggiornata = form.data_fine && form.data_fine < nuovaData ? nuovaData : form.data_fine
+                          setForm({ ...form, data: nuovaData, data_fine: dataFineAggiornata })
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1.5">Data fine</label>
+                      <input
+                        type="date"
+                        className="input-field"
+                        value={form.data_fine}
+                        min={form.data}
+                        onChange={(e) => setForm({ ...form, data_fine: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1.5">Ora inizio</label>
+                      <select
+                        className="input-field"
+                        value={form.ora_inizio}
+                        onChange={(e) => setForm({ ...form, ora_inizio: e.target.value })}
+                      >
+                        {slotOrari.map((s) => <option key={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1.5">Ora fine</label>
+                      <select
+                        className="input-field"
+                        value={form.ora_fine}
+                        onChange={(e) => setForm({ ...form, ora_fine: e.target.value })}
+                      >
+                        {slotOrari.map((s) => <option key={s}>{s}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Data inizio</label>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Data</label>
                     <input
                       type="date"
                       className="input-field"
                       value={form.data}
-                      onChange={(e) => {
-                        const nuovaData = e.target.value
-                        const dataFineAggiornata = form.data_fine && form.data_fine < nuovaData ? nuovaData : form.data_fine
-                        setForm({ ...form, data: nuovaData, data_fine: dataFineAggiornata })
-                      }}
+                      onChange={(e) => setForm({ ...form, data: e.target.value })}
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Data fine</label>
-                    <input
-                      type="date"
-                      className="input-field"
-                      value={form.data_fine}
-                      min={form.data}
-                      onChange={(e) => setForm({ ...form, data_fine: e.target.value })}
-                    />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1.5">Ora inizio</label>
+                      <select
+                        className="input-field"
+                        value={form.ora_inizio}
+                        onChange={(e) => setForm({ ...form, ora_inizio: e.target.value })}
+                      >
+                        {slotOrari.map((s) => <option key={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1.5">Ora fine</label>
+                      <select
+                        className="input-field"
+                        value={form.ora_fine}
+                        onChange={(e) => setForm({ ...form, ora_fine: e.target.value })}
+                      >
+                        {slotOrari.map((s) => <option key={s}>{s}</option>)}
+                      </select>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Data</label>
-                  <input
-                    type="date"
-                    className="input-field"
-                    value={form.data}
-                    onChange={(e) => setForm({ ...form, data: e.target.value })}
-                  />
-                </div>
+                </>
               )}
 
               <div>
@@ -386,71 +435,6 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
             </div>
           )}
 
-          {/* ── Vista Sposta ── */}
-          {modalita === 'sposta' && (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1.5">Nuova data</label>
-                <input
-                  type="date"
-                  className="input-field"
-                  value={form.data}
-                  onChange={(e) => setForm({ ...form, data: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1.5">Ora inizio</label>
-                <select
-                  className="input-field"
-                  value={form.ora_inizio}
-                  onChange={(e) => setForm({ ...form, ora_inizio: e.target.value })}
-                >
-                  {slotOrari.map((s) => <option key={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1.5">Ora fine</label>
-                <select
-                  className="input-field"
-                  value={form.ora_fine}
-                  onChange={(e) => setForm({ ...form, ora_fine: e.target.value })}
-                >
-                  {slotOrari.map((s) => <option key={s}>{s}</option>)}
-                </select>
-              </div>
-              <button
-                onClick={async () => {
-                  setLoading(true)
-                  try {
-                    const res = await fetch('/api/appuntamenti', {
-                      method: 'PATCH',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        id: appuntamento.id,
-                        google_calendar_event_id: appuntamento.google_calendar_event_id,
-                        data: form.data,
-                        ora_inizio: form.ora_inizio,
-                        ora_fine: form.ora_fine,
-                        stato: 'Spostato',
-                      }),
-                    })
-                    if (!res.ok) throw new Error()
-                    toast.success('Appuntamento spostato')
-                    onAggiornato()
-                    onClose()
-                  } catch {
-                    toast.error('Errore durante lo spostamento')
-                  } finally {
-                    setLoading(false)
-                  }
-                }}
-                disabled={loading}
-                className="btn-primary w-full mt-2"
-              >
-                {loading ? 'Spostamento...' : 'Conferma spostamento'}
-              </button>
-            </div>
-          )}
         </div>
       </div>
     </div>
