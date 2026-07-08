@@ -210,6 +210,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
+    console.log('[POST /api/appuntamenti] body ricevuto (chiavi):', Object.keys(body))
+    console.log('[POST] body.cliente_telefono:', JSON.stringify(body.cliente_telefono))
+    console.log('[POST] body.telefono:', JSON.stringify(body.telefono))
     const {
       cliente_nome,
       cliente_telefono,
@@ -289,6 +292,8 @@ export async function POST(request: NextRequest) {
       invitati: invitatiList,
     }
     console.log('[POST] payload Airtable (location):', datiCondivisi.indirizzo)
+    console.log('[POST] payload Airtable (cliente_telefono):', JSON.stringify(datiCondivisi.cliente_telefono))
+    console.log('[POST] payload Prossimi Appuntamenti (completo):', JSON.stringify(datiCondivisi))
     const [appuntamento] = await Promise.all([
       creaAppuntamento(datiCondivisi),
       creaProssimoAppuntamento(datiCondivisi)

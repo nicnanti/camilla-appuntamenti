@@ -231,7 +231,10 @@ export async function creaProssimoAppuntamento(
     invitati: stringifyInvitati(app.invitati),
   }
   assegnaCampoData(payload, 'data_fine', app.data_fine)
-  await tabellaProssimiAppuntamenti.create(payload as Airtable.FieldSet)
+  console.log('[airtable] creaProssimoAppuntamento payload finale (cliente_telefono):', JSON.stringify(payload.cliente_telefono))
+  console.log('[airtable] creaProssimoAppuntamento payload finale (chiavi):', Object.keys(payload))
+  const record = await tabellaProssimiAppuntamenti.create(payload as Airtable.FieldSet)
+  console.log('[airtable] creaProssimoAppuntamento record tornato — cliente_telefono:', JSON.stringify(record.fields.cliente_telefono))
 }
 
 export async function aggiornaProssimoAppuntamentoByGcalId(

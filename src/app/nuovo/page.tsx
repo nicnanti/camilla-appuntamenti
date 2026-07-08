@@ -142,25 +142,28 @@ export default function PaginaNuovoAppuntamento() {
     if (!valida()) return
     setLoading(true)
     try {
+      const bodyAppuntamento = {
+        cliente_nome: form.cliente_nome,
+        cliente_telefono: form.cliente_telefono,
+        cliente_dettagli: form.cliente_dettagli,
+        indirizzo: form.cliente_indirizzo,
+        data: form.data,
+        // data_fine solo se checkbox attiva E data successiva alla data inizio
+        data_fine: form.multiGiorno && form.data_fine && form.data_fine > form.data ? form.data_fine : null,
+        ora_inizio: form.ora_inizio,
+        ora_fine: form.ora_fine,
+        note: form.note,
+        professionista: form.professionista,
+        guest: form.guest,
+        invitati: form.invitati,
+        tipo: '',
+      }
+      console.log('[Form] body appuntamento inviato:', bodyAppuntamento)
+      console.log('[Form] cliente_telefono nel body:', JSON.stringify(form.cliente_telefono))
       const res = await fetch('/api/appuntamenti', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cliente_nome: form.cliente_nome,
-          cliente_telefono: form.cliente_telefono,
-          cliente_dettagli: form.cliente_dettagli,
-          indirizzo: form.cliente_indirizzo,
-          data: form.data,
-          // data_fine solo se checkbox attiva E data successiva alla data inizio
-          data_fine: form.multiGiorno && form.data_fine && form.data_fine > form.data ? form.data_fine : null,
-          ora_inizio: form.ora_inizio,
-          ora_fine: form.ora_fine,
-          note: form.note,
-          professionista: form.professionista,
-          guest: form.guest,
-          invitati: form.invitati,
-          tipo: '',
-        }),
+        body: JSON.stringify(bodyAppuntamento),
       })
       if (!res.ok) {
         const data = await res.json()
