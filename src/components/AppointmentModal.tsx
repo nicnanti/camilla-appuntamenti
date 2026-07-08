@@ -44,7 +44,9 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
         ics_uid: appuntamento.ics_uid,
         ics_sequence: appuntamento.ics_sequence,
         guests: appuntamento.guests,
-        professionista: appuntamento.professionista,
+        // Usa `host` derivato (che ha fallback su gcalId keys), non il raw appuntamento.professionista
+        // — quest'ultimo può arrivare vuoto dal backend su record legacy.
+        professionista: host || appuntamento.professionista,
         ...form,
         data_fine: dataFineNorm,
       }

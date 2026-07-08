@@ -354,19 +354,27 @@ export async function PATCH(request: NextRequest) {
 
     if (!id) return NextResponse.json({ errore: 'ID mancante' }, { status: 400 })
 
-    // Rileva se data/ora sono cambiate per resettare reminder
+    // Legge il record corrente (serve per confronto orari + fallback host)
     const tStart = Date.now()
     let orarioCambiato = false
+    let profDalRecord = ''
     try {
       const corrente = await getAppuntamentoById(id)
       orarioCambiato =
         (datiAggiornamento.data !== undefined && datiAggiornamento.data !== corrente.data) ||
         (datiAggiornamento.ora_inizio !== undefined && datiAggiornamento.ora_inizio !== corrente.ora_inizio) ||
         (datiAggiornamento.ora_fine !== undefined && datiAggiornamento.ora_fine !== corrente.ora_fine)
+      profDalRecord = corrente.professionista ?? ''
     } catch (err) {
       console.warn('[PATCH] Impossibile leggere record corrente per confronto orari:', err)
     }
     console.log(`[TIMING] PATCH lettura corrente: ${Date.now() - tStart}ms`)
+
+    // Host effettivo: preferisci quello del body, altrimenti quello del record esistente
+    const profEffettivo: string = (typeof profField === 'string' && profField) || profDalRecord
+    if (!profField && profEffettivo) {
+      console.log(`[PATCH] professionista non nel body → uso quello del record: "${profEffettivo}"`)
+    }
 
     const nuovaSequence = (ics_sequence ?? 0) + 1
     const reminderReset = orarioCambiato ? { reminder_sent: false, reminder_sent_at: null } : {}
@@ -381,7 +389,7 @@ export async function PATCH(request: NextRequest) {
     const tGcal = Date.now()
     await Promise.all(entries.map(async (entry) => {
       try {
-        await aggiornaEventoCalendar(entry.eventId, entry.calendarId, datiAggiornamento, profField)
+        await aggiornaEventoCalendar(entry.eventId, entry.calendarId, datiAggiornamento, profEffettivo)
       } catch (err) {
         console.error(`[PATCH] ✗ aggiornaEventoCalendar (${entry.nome}):`, err)
       }
@@ -414,7 +422,7 @@ export async function PATCH(request: NextRequest) {
     console.log(`[TIMING] PATCH Airtable (entrambe tabelle parallelo): ${Date.now() - tAt}ms`)
 
     // ── Email .ics MODIFICA: FIRE-AND-FORGET, SMTP dell'host ──────────────────
-    const hostPatch = asHost(profField)
+    const hostPatch = asHost(profEffettivo)
     if (hostPatch && ics_uid) {
       const datiIcs = {
         cliente_nome:     datiAggiornamento.cliente_nome ?? appuntamento.cliente_nome,
@@ -423,7 +431,7 @@ export async function PATCH(request: NextRequest) {
         data:             datiAggiornamento.data ?? appuntamento.data,
         ora_inizio:       datiAggiornamento.ora_inizio ?? appuntamento.ora_inizio,
         ora_fine:         datiAggiornamento.ora_fine ?? appuntamento.ora_fine,
-        professionistaNome: profField,
+        professionistaNome: profEffettivo,
         icsUid: ics_uid,
         icsSequence: nuovaSequence,
       }
@@ -447,7 +455,7 @@ export async function PATCH(request: NextRequest) {
         })())
       }
     } else if (!hostPatch) {
-      console.warn(`[PATCH] Professionista host non riconosciuto ("${profField}") — email .ics non inviate.`)
+      console.warn(`[PATCH] Professionista host non riconosciuto (body="${profField}", record="${profDalRecord}") — email .ics non inviate.`)
     }
 
     console.log(`[TIMING] PATCH totale: ${Date.now() - tStart}ms`)
