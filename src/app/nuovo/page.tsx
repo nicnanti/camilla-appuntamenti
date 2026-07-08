@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import toast from 'react-hot-toast'
 import ContactSearch from '@/components/ContactSearch'
 import DatePicker from '@/components/DatePicker'
@@ -83,20 +83,42 @@ function GuestChip({ label, selected, onClick }: { label: string; selected: bool
   )
 }
 
+// useSearchParams richiede Suspense boundary per il prerendering statico.
 export default function PaginaNuovoAppuntamento() {
+  return (
+    <Suspense fallback={<div className="min-h-full flex items-center justify-center text-sm text-gray-400">Caricamento…</div>}>
+      <FormNuovoAppuntamento />
+    </Suspense>
+  )
+}
+
+function FormNuovoAppuntamento() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const oggi = new Date().toISOString().split('T')[0]
+
+  // Prefill da query string quando l'utente clicca uno slot orario nel calendario:
+  // /nuovo?data=YYYY-MM-DD&ora=HH:MM
+  const dataQuery = searchParams?.get('data') ?? ''
+  const oraQuery  = searchParams?.get('ora')  ?? ''
+  const dataIniziale = dataQuery && /^\d{4}-\d{2}-\d{2}$/.test(dataQuery) ? dataQuery : oggi
+  const oraInizioIniziale = oraQuery && /^\d{2}:\d{2}$/.test(oraQuery) ? oraQuery : '09:00'
+  const oraFineIniziale = (() => {
+    const [h, m] = oraInizioIniziale.split(':').map(Number)
+    const hFine = Math.min(20, h + 1)
+    return `${String(hFine).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+  })()
 
   const [form, setForm] = useState<FormState>({
     cliente_nome: '',
     cliente_telefono: '',
     cliente_dettagli: '',
     cliente_indirizzo: '',
-    data: oggi,
+    data: dataIniziale,
     data_fine: '',
     multiGiorno: false,
-    ora_inizio: '09:00',
-    ora_fine: '10:00',
+    ora_inizio: oraInizioIniziale,
+    ora_fine: oraFineIniziale,
     note: '',
     professionista: '',
     guest: [],

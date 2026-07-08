@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 import AddressAutocomplete from './AddressAutocomplete'
+import ContactSearch from './ContactSearch'
 import InvitatiPicker from './InvitatiPicker'
 import type { Appuntamento, Invitato } from '@/types'
 import clsx from 'clsx'
@@ -284,11 +285,21 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1.5">Nome cliente</label>
-                <input
-                  className="input-field"
-                  value={form.cliente_nome}
-                  onChange={(e) => setForm({ ...form, cliente_nome: e.target.value })}
-                />
+                <div className="input-field !p-0 !border-0 !bg-transparent">
+                  <ContactSearch
+                    value={form.cliente_nome}
+                    onChange={(nome, tel, _dettagli, indirizzo) => {
+                      setForm((prev) => ({
+                        ...prev,
+                        cliente_nome: nome,
+                        // Se ContactSearch fornisce telefono/indirizzo (selezione da dropdown),
+                        // aggiorna. Se solo il nome è cambiato (digitazione manuale), lascia intatti.
+                        ...(tel !== undefined       && { cliente_telefono: tel }),
+                        ...(indirizzo !== undefined && { indirizzo }),
+                      }))
+                    }}
+                  />
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1.5">Telefono</label>

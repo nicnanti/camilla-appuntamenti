@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import clsx from 'clsx'
 import AppointmentModal from './AppointmentModal'
 import { useApp } from '@/contexts/AppContext'
@@ -144,10 +145,11 @@ interface GiornataSidebarProps {
   appuntamenti: Appuntamento[]
   filtroSingolo: 'camilla' | 'giacomo' | null
   onSeleziona: (app: Appuntamento) => void
+  onCreaAppuntamento: (data: Date, ora: string) => void
   onChiudi: () => void
 }
 
-function GiornataSidebar({ data, appuntamenti, filtroSingolo, onSeleziona, onChiudi }: GiornataSidebarProps) {
+function GiornataSidebar({ data, appuntamenti, filtroSingolo, onSeleziona, onCreaAppuntamento, onChiudi }: GiornataSidebarProps) {
   const oreVisibili = Array.from({ length: 13 }, (_, i) => i + 8) // 8-20
 
   const formatOra = (h: number) => `${String(h).padStart(2, '0')}:00`
@@ -183,18 +185,30 @@ function GiornataSidebar({ data, appuntamenti, filtroSingolo, onSeleziona, onChi
       <div className="flex-1 overflow-y-auto">
         {oreVisibili.map((h) => {
           const apps = appPerOra(h)
+          const oraSlot = formatOra(h)
           return (
-            <div key={h} className="flex border-b border-[#F3F4F6] min-h-[56px]">
-              <div className="w-14 flex-shrink-0 px-3 py-2">
-                <span className="text-xs text-gray-300">{formatOra(h)}</span>
+            <div
+              key={h}
+              onClick={(e) => {
+                // Ignora click sui bottoni appuntamento (usano stopPropagation).
+                // Click sul resto della riga = crea nuovo appuntamento a questo orario.
+                if (e.target === e.currentTarget || (e.target as HTMLElement).dataset.slotArea === 'true') {
+                  onCreaAppuntamento(data, oraSlot)
+                }
+              }}
+              className="flex border-b border-[#F3F4F6] min-h-[56px] cursor-pointer hover:bg-blue-50/40 transition-colors group"
+              title="Crea appuntamento in questa fascia oraria"
+            >
+              <div className="w-14 flex-shrink-0 px-3 py-2" data-slot-area="true">
+                <span className="text-xs text-gray-300 group-hover:text-[#1E3A5F]">{formatOra(h)}</span>
               </div>
-              <div className="flex-1 p-1.5 space-y-1">
+              <div className="flex-1 p-1.5 space-y-1" data-slot-area="true">
                 {apps.map((app) => {
                   const colori = getColoriApp(app, filtroSingolo)
                   return (
                   <button
                     key={app.id}
-                    onClick={() => onSeleziona(app)}
+                    onClick={(e) => { e.stopPropagation(); onSeleziona(app) }}
                     className={clsx(
                       'w-full text-left px-2.5 py-2 rounded-lg border text-xs font-medium transition-all hover:shadow-soft',
                       colori.chip
@@ -240,7 +254,14 @@ function GiornataSidebar({ data, appuntamenti, filtroSingolo, onSeleziona, onChi
 type Vista = 'mese' | 'settimana' | 'giorno'
 
 export default function Calendar() {
+  const router = useRouter()
   const oggi = new Date()
+
+  // Naviga a /nuovo con data + ora prefilled (usato da GiornataSidebar e GiornoView)
+  const creaAppuntamentoConSlot = useCallback((d: Date, ora: string) => {
+    const dataStr = ymd(d)
+    router.push(`/nuovo?data=${encodeURIComponent(dataStr)}&ora=${encodeURIComponent(ora)}`)
+  }, [router])
   const [vista, setVista] = useState<Vista>('mese')
   const [dataCorrente, setDataCorrente] = useState<Date>(new Date(oggi.getFullYear(), oggi.getMonth(), oggi.getDate()))
   const [appuntamenti, setAppuntamenti] = useState<Appuntamento[]>([])
@@ -531,6 +552,7 @@ export default function Calendar() {
           appuntamenti={appGiornoSelezionato}
           filtroSingolo={filtroSingolo}
           onSeleziona={setAppSelezionato}
+          onCreaAppuntamento={creaAppuntamentoConSlot}
           onChiudi={() => setGiornoSelezionato(null)}
         />
       )}
