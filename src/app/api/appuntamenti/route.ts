@@ -422,8 +422,14 @@ export async function PATCH(request: NextRequest) {
     console.log(`[TIMING] PATCH Airtable (entrambe tabelle parallelo): ${Date.now() - tAt}ms`)
 
     // ── Email .ics MODIFICA: FIRE-AND-FORGET, SMTP dell'host ──────────────────
+    console.log(`[PATCH] host finale usato: "${profEffettivo}"`)
     const hostPatch = asHost(profEffettivo)
-    if (hostPatch && ics_uid) {
+    if (!hostPatch) {
+      console.warn(`[PATCH] Professionista host non riconosciuto (body="${profField}", record="${profDalRecord}") — email .ics non inviate.`)
+    } else {
+      // Fallback UID: se il record non ha ics_uid (legacy), ne genero uno stabile dall'id.
+      // Serve al client email (Outlook/Gmail) per aggregare gli update dell'evento.
+      const icsUidEffettivo: string = (typeof ics_uid === 'string' && ics_uid) || `patch-${id}`
       const datiIcs = {
         cliente_nome:     datiAggiornamento.cliente_nome ?? appuntamento.cliente_nome,
         cliente_telefono: datiAggiornamento.cliente_telefono ?? appuntamento.cliente_telefono,
@@ -432,13 +438,19 @@ export async function PATCH(request: NextRequest) {
         ora_inizio:       datiAggiornamento.ora_inizio ?? appuntamento.ora_inizio,
         ora_fine:         datiAggiornamento.ora_fine ?? appuntamento.ora_fine,
         professionistaNome: profEffettivo,
-        icsUid: ics_uid,
+        icsUid: icsUidEffettivo,
         icsSequence: nuovaSequence,
       }
       // I `guests` su Airtable sono email — derivo i nomi staff da lì
       const guestListPatch = nomiStaffDaGuestsField(guestEmailsPatch.join(','))
       const destinatari = destinatariIcs(hostPatch, guestListPatch)
-      if (destinatari.length > 0) {
+
+      console.log(`[PATCH] avvio invio email con host="${hostPatch}"`)
+      console.log(`[PATCH] destinatari email:`, destinatari)
+
+      if (destinatari.length === 0) {
+        console.log(`[PATCH] NESSUN destinatario — skip invio`)
+      } else {
         // Sequenziale con 500ms di pausa. waitUntil() previene troncamento serverless.
         waitUntil((async () => {
           let okCount = 0
@@ -454,8 +466,6 @@ export async function PATCH(request: NextRequest) {
           console.log(`[Email .ics PATCH] ${okCount}/${destinatari.length} inviate (host: ${hostPatch}, destinatari: ${destinatari.join(', ')})`)
         })())
       }
-    } else if (!hostPatch) {
-      console.warn(`[PATCH] Professionista host non riconosciuto (body="${profField}", record="${profDalRecord}") — email .ics non inviate.`)
     }
 
     console.log(`[TIMING] PATCH totale: ${Date.now() - tStart}ms`)
