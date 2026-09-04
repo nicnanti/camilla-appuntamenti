@@ -102,9 +102,8 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
   }
 
   const slotOrari: string[] = []
-  for (let h = 8; h <= 20; h++) {
+  for (let h = 0; h <= 23; h++) {
     for (let m = 0; m < 60; m += 15) {
-      if (h === 20 && m > 0) break
       slotOrari.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
     }
   }

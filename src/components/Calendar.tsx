@@ -150,7 +150,7 @@ interface GiornataSidebarProps {
 }
 
 function GiornataSidebar({ data, appuntamenti, filtroSingolo, onSeleziona, onCreaAppuntamento, onChiudi }: GiornataSidebarProps) {
-  const oreVisibili = Array.from({ length: 13 }, (_, i) => i + 8) // 8-20
+  const oreVisibili = Array.from({ length: 24 }, (_, i) => i) // 0-23
 
   const formatOra = (h: number) => `${String(h).padStart(2, '0')}:00`
 

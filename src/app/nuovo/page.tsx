@@ -11,9 +11,8 @@ import type { Invitato } from '@/types'
 
 function generaSlotOrari(): string[] {
   const slot: string[] = []
-  for (let h = 8; h <= 20; h++) {
+  for (let h = 0; h <= 23; h++) {
     for (let m = 0; m < 60; m += 15) {
-      if (h === 20 && m > 0) break
       slot.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
     }
   }
@@ -105,8 +104,8 @@ function FormNuovoAppuntamento() {
   const oraInizioIniziale = oraQuery && /^\d{2}:\d{2}$/.test(oraQuery) ? oraQuery : '09:00'
   const oraFineIniziale = (() => {
     const [h, m] = oraInizioIniziale.split(':').map(Number)
-    const hFine = Math.min(20, h + 1)
-    return `${String(hFine).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+    if (h >= 23) return '23:45'
+    return `${String(h + 1).padStart(2, '0')}:${String(m).padStart(2, '0')}`
   })()
 
   const [form, setForm] = useState<FormState>({
