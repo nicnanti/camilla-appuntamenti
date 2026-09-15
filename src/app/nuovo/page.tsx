@@ -8,7 +8,7 @@ import DatePicker from '@/components/DatePicker'
 import AddressAutocomplete from '@/components/AddressAutocomplete'
 import InvitatiPicker from '@/components/InvitatiPicker'
 import type { Invitato } from '@/types'
-import { addDays, addMonths, addWeeks, differenceInCalendarDays, format, isWeekend, parseISO } from 'date-fns'
+import { addDays, addMonths, addWeeks, differenceInCalendarDays, format, isWeekend, parseISO, startOfWeek } from 'date-fns'
 
 function generaSlotOrari(): string[] {
   const slot: string[] = []
@@ -23,7 +23,24 @@ function generaSlotOrari(): string[] {
 const SLOT_ORARI = generaSlotOrari()
 
 // ── Ricorrenza ────────────────────────────────────────────────────────────────
-type Ricorrenza = 'nessuna' | 'giornaliera' | 'lavorativa' | 'settimanale' | 'bisettimanale' | 'mensile'
+type Ricorrenza = 'nessuna' | 'giornaliera' | 'lavorativa' | 'settimanale' | 'bisettimanale' | 'mensile' | 'personalizzata'
+type UnitaPersonalizzata = 'giorni' | 'settimane' | 'mesi'
+
+// Configurazione della ricorrenza personalizzata: "ogni N giorni/settimane/mesi".
+// `giorni` (solo per unità settimane): giorni della settimana selezionati, 0 = lunedì … 6 = domenica.
+interface Personalizzata {
+  intervallo: number
+  unita: UnitaPersonalizzata
+  giorni: number[]
+}
+
+const GIORNI_SETTIMANA = ['L', 'M', 'M', 'G', 'V', 'S', 'D']
+const NOMI_GIORNI = ['lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato', 'domenica']
+
+// Indice lunedì-based (0..6) del giorno della settimana di una data YYYY-MM-DD
+function giornoSettimanaLun(data: string): number {
+  return (parseISO(data).getDay() + 6) % 7
+}
 
 const RICORRENZA_OPTIONS: Array<{ value: Ricorrenza; label: string }> = [
   { value: 'nessuna',       label: 'Non si ripete' },
@@ -32,6 +49,7 @@ const RICORRENZA_OPTIONS: Array<{ value: Ricorrenza; label: string }> = [
   { value: 'settimanale',   label: 'Ogni settimana' },
   { value: 'bisettimanale', label: 'Ogni 2 settimane' },
   { value: 'mensile',       label: 'Ogni mese' },
+  { value: 'personalizzata', label: 'Personalizzata…' },
 ]
 
 // Limite di sicurezza: ogni occorrenza crea un evento Google Calendar, due record
@@ -40,11 +58,47 @@ const MAX_OCCORRENZE = 52
 
 // Genera le date (YYYY-MM-DD) della serie, inclusa la data di inizio.
 // Si ferma a `fine` (inclusa) oppure al raggiungimento di `max` occorrenze.
-function generaDateRicorrenza(inizio: string, tipo: Ricorrenza, fine: string, max = MAX_OCCORRENZE): string[] {
+function generaDateRicorrenza(
+  inizio: string,
+  tipo: Ricorrenza,
+  fine: string,
+  pers?: Personalizzata,
+  max = MAX_OCCORRENZE,
+): string[] {
   if (!inizio) return []
   if (tipo === 'nessuna' || !fine || fine < inizio) return [inizio]
   const start = parseISO(inizio)
   const out: string[] = []
+
+  if (tipo === 'personalizzata') {
+    const intervallo = Math.max(1, Math.floor(pers?.intervallo ?? 1))
+    const unita = pers?.unita ?? 'settimane'
+    if (unita === 'settimane') {
+      // Settimane con giorni scelti: partiamo dal lunedì della settimana di inizio e
+      // per ogni settimana "attiva" aggiungiamo i giorni selezionati (>= inizio, <= fine).
+      const giorni = (pers?.giorni?.length ? pers.giorni : [giornoSettimanaLun(inizio)]).slice().sort()
+      const lunedi = startOfWeek(start, { weekStartsOn: 1 })
+      for (let w = 0; out.length < max; w++) {
+        const base = addWeeks(lunedi, w * intervallo)
+        if (format(base, 'yyyy-MM-dd') > fine) break
+        for (const g of giorni) {
+          const s = format(addDays(base, g), 'yyyy-MM-dd')
+          if (s < inizio || s > fine) continue
+          out.push(s)
+          if (out.length >= max) break
+        }
+      }
+      return out.length > 0 ? out : [inizio]
+    }
+    for (let i = 0; out.length < max; i++) {
+      const d = unita === 'giorni' ? addDays(start, i * intervallo) : addMonths(start, i * intervallo)
+      const s = format(d, 'yyyy-MM-dd')
+      if (s > fine) break
+      out.push(s)
+    }
+    return out.length > 0 ? out : [inizio]
+  }
+
   // Per giornaliera/lavorativa iteriamo giorno per giorno; per le altre usiamo l'indice
   // (addMonths(start, i) evita lo slittamento sui mesi con meno giorni: 31 gen → 28 feb → 31 mar).
   for (let i = 0; out.length < max; i++) {
@@ -97,6 +151,7 @@ interface FormState {
   invitati: Invitato[]
   ricorrenza: Ricorrenza
   ricorrenza_fine: string   // YYYY-MM-DD, ultima data della serie (valorizzata solo se ricorrenza ≠ nessuna)
+  personalizzata: Personalizzata  // usata solo se ricorrenza = personalizzata
 }
 
 interface Errori {
@@ -106,6 +161,7 @@ interface Errori {
   data_fine?: string
   ora_fine?: string
   ricorrenza_fine?: string
+  personalizzata?: string
 }
 
 function ProfChip({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
@@ -181,6 +237,7 @@ function FormNuovoAppuntamento() {
     invitati: [],
     ricorrenza: 'nessuna',
     ricorrenza_fine: '',
+    personalizzata: { intervallo: 1, unita: 'settimane', giorni: [giornoSettimanaLun(dataIniziale)] },
   })
   const [errori, setErrori] = useState<Errori>({})
   const [loading, setLoading] = useState(false)
@@ -190,7 +247,7 @@ function FormNuovoAppuntamento() {
   const ricorrente = form.ricorrenza !== 'nessuna'
   // Date della serie calcolate dal form corrente (anteprima + creazione)
   const dateSerie = ricorrente
-    ? generaDateRicorrenza(form.data, form.ricorrenza, form.ricorrenza_fine, MAX_OCCORRENZE + 1)
+    ? generaDateRicorrenza(form.data, form.ricorrenza, form.ricorrenza_fine, form.personalizzata, MAX_OCCORRENZE + 1)
     : [form.data]
 
   const selezionaProfessionista = (p: string) => {
@@ -222,6 +279,14 @@ function FormNuovoAppuntamento() {
     }
     if (form.ora_inizio >= form.ora_fine) e.ora_fine = "L'ora di fine deve essere dopo l'inizio"
     if (ricorrente) {
+      if (form.ricorrenza === 'personalizzata') {
+        const { intervallo, unita, giorni } = form.personalizzata
+        if (!Number.isInteger(intervallo) || intervallo < 1 || intervallo > 99) {
+          e.personalizzata = "L'intervallo deve essere un numero tra 1 e 99"
+        } else if (unita === 'settimane' && giorni.length === 0) {
+          e.personalizzata = 'Seleziona almeno un giorno della settimana'
+        }
+      }
       if (!form.ricorrenza_fine) {
         e.ricorrenza_fine = 'Seleziona fino a quando ripetere'
       } else if (form.ricorrenza_fine <= form.data) {
@@ -583,6 +648,87 @@ function FormNuovoAppuntamento() {
               ))}
             </select>
           </div>
+
+          {form.ricorrenza === 'personalizzata' && (
+            <div className="px-4 py-3">
+              <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-2">Ripeti ogni</p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={99}
+                  inputMode="numeric"
+                  className={`w-16 text-sm text-center bg-white border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#3B82F6]/30 ${errori.personalizzata ? 'border-red-300 text-red-500' : 'border-[#E5E7EB] text-[#1A1A1A]'}`}
+                  value={form.personalizzata.intervallo}
+                  onChange={(e) => {
+                    const intervallo = e.target.value === '' ? 0 : parseInt(e.target.value, 10)
+                    setForm((prev) => ({ ...prev, personalizzata: { ...prev.personalizzata, intervallo } }))
+                    if (errori.personalizzata) setErrori({ ...errori, personalizzata: undefined })
+                  }}
+                />
+                <select
+                  className="flex-1 text-sm text-[#1A1A1A] bg-white border border-[#E5E7EB] rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#3B82F6]/30"
+                  value={form.personalizzata.unita}
+                  onChange={(e) => {
+                    const unita = e.target.value as UnitaPersonalizzata
+                    setForm((prev) => ({
+                      ...prev,
+                      personalizzata: {
+                        ...prev.personalizzata,
+                        unita,
+                        // Passando alle settimane, se non ci sono giorni scelti proponiamo quello della data di inizio
+                        giorni: unita === 'settimane' && prev.personalizzata.giorni.length === 0
+                          ? [giornoSettimanaLun(prev.data || oggi)]
+                          : prev.personalizzata.giorni,
+                      },
+                    }))
+                    if (errori.personalizzata) setErrori({ ...errori, personalizzata: undefined })
+                  }}
+                >
+                  <option value="giorni">{form.personalizzata.intervallo === 1 ? 'giorno' : 'giorni'}</option>
+                  <option value="settimane">{form.personalizzata.intervallo === 1 ? 'settimana' : 'settimane'}</option>
+                  <option value="mesi">{form.personalizzata.intervallo === 1 ? 'mese' : 'mesi'}</option>
+                </select>
+              </div>
+
+              {form.personalizzata.unita === 'settimane' && (
+                <div className="mt-3">
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-2">Nei giorni</p>
+                  <div className="flex gap-1.5">
+                    {GIORNI_SETTIMANA.map((lettera, idx) => {
+                      const attivo = form.personalizzata.giorni.includes(idx)
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          title={NOMI_GIORNI[idx]}
+                          aria-label={NOMI_GIORNI[idx]}
+                          aria-pressed={attivo}
+                          onClick={() => {
+                            setForm((prev) => {
+                              const giorni = prev.personalizzata.giorni.includes(idx)
+                                ? prev.personalizzata.giorni.filter((g) => g !== idx)
+                                : [...prev.personalizzata.giorni, idx].sort()
+                              return { ...prev, personalizzata: { ...prev.personalizzata, giorni } }
+                            })
+                            if (errori.personalizzata) setErrori({ ...errori, personalizzata: undefined })
+                          }}
+                          className={`w-8 h-8 rounded-full text-xs font-medium border transition-all select-none ${
+                            attivo
+                              ? 'bg-[#1E3A5F] border-[#1E3A5F] text-white'
+                              : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          {lettera}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+              {errori.personalizzata && <p className="text-xs text-red-500 mt-2">{errori.personalizzata}</p>}
+            </div>
+          )}
 
           {ricorrente && (
             <div className="px-4 py-3">
