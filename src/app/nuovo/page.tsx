@@ -8,6 +8,7 @@ import DatePicker from '@/components/DatePicker'
 import AddressAutocomplete from '@/components/AddressAutocomplete'
 import InvitatiPicker from '@/components/InvitatiPicker'
 import type { Invitato } from '@/types'
+import { addDays, addMonths, addWeeks, differenceInCalendarDays, format, isWeekend, parseISO } from 'date-fns'
 
 function generaSlotOrari(): string[] {
   const slot: string[] = []
@@ -20,6 +21,59 @@ function generaSlotOrari(): string[] {
 }
 
 const SLOT_ORARI = generaSlotOrari()
+
+// ── Ricorrenza ────────────────────────────────────────────────────────────────
+type Ricorrenza = 'nessuna' | 'giornaliera' | 'lavorativa' | 'settimanale' | 'bisettimanale' | 'mensile'
+
+const RICORRENZA_OPTIONS: Array<{ value: Ricorrenza; label: string }> = [
+  { value: 'nessuna',       label: 'Non si ripete' },
+  { value: 'giornaliera',   label: 'Ogni giorno' },
+  { value: 'lavorativa',    label: 'Ogni giorno lavorativo (lun–ven)' },
+  { value: 'settimanale',   label: 'Ogni settimana' },
+  { value: 'bisettimanale', label: 'Ogni 2 settimane' },
+  { value: 'mensile',       label: 'Ogni mese' },
+]
+
+// Limite di sicurezza: ogni occorrenza crea un evento Google Calendar, due record
+// Airtable e le email .ics, quindi la serie non può essere illimitata.
+const MAX_OCCORRENZE = 52
+
+// Genera le date (YYYY-MM-DD) della serie, inclusa la data di inizio.
+// Si ferma a `fine` (inclusa) oppure al raggiungimento di `max` occorrenze.
+function generaDateRicorrenza(inizio: string, tipo: Ricorrenza, fine: string, max = MAX_OCCORRENZE): string[] {
+  if (!inizio) return []
+  if (tipo === 'nessuna' || !fine || fine < inizio) return [inizio]
+  const start = parseISO(inizio)
+  const out: string[] = []
+  // Per giornaliera/lavorativa iteriamo giorno per giorno; per le altre usiamo l'indice
+  // (addMonths(start, i) evita lo slittamento sui mesi con meno giorni: 31 gen → 28 feb → 31 mar).
+  for (let i = 0; out.length < max; i++) {
+    let d: Date
+    switch (tipo) {
+      case 'giornaliera':
+      case 'lavorativa':    d = addDays(start, i); break
+      case 'settimanale':   d = addWeeks(start, i); break
+      case 'bisettimanale': d = addWeeks(start, i * 2); break
+      case 'mensile':       d = addMonths(start, i); break
+      default:              return [inizio]
+    }
+    const s = format(d, 'yyyy-MM-dd')
+    if (s > fine) break
+    if (tipo === 'lavorativa' && isWeekend(d) && i > 0) continue
+    out.push(s)
+  }
+  return out.length > 0 ? out : [inizio]
+}
+
+// Sposta una data YYYY-MM-DD di `giorni` giorni (usato per data_fine nelle serie multi-giorno)
+function spostaData(data: string, giorni: number): string {
+  return format(addDays(parseISO(data), giorni), 'yyyy-MM-dd')
+}
+
+function formatDataBreve(d: string): string {
+  const [y, m, g] = d.split('-')
+  return `${g}/${m}/${y}`
+}
 
 // Guest disponibili per ogni professionista (il professionista stesso non compare)
 const GUEST_OPTIONS: Record<string, string[]> = {
@@ -41,6 +95,8 @@ interface FormState {
   professionista: string
   guest: string[]
   invitati: Invitato[]
+  ricorrenza: Ricorrenza
+  ricorrenza_fine: string   // YYYY-MM-DD, ultima data della serie (valorizzata solo se ricorrenza ≠ nessuna)
 }
 
 interface Errori {
@@ -49,6 +105,7 @@ interface Errori {
   data?: string
   data_fine?: string
   ora_fine?: string
+  ricorrenza_fine?: string
 }
 
 function ProfChip({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
@@ -122,9 +179,19 @@ function FormNuovoAppuntamento() {
     professionista: '',
     guest: [],
     invitati: [],
+    ricorrenza: 'nessuna',
+    ricorrenza_fine: '',
   })
   const [errori, setErrori] = useState<Errori>({})
   const [loading, setLoading] = useState(false)
+  // Avanzamento creazione serie ricorrente: { fatti, totale }
+  const [progresso, setProgresso] = useState<{ fatti: number; totale: number } | null>(null)
+
+  const ricorrente = form.ricorrenza !== 'nessuna'
+  // Date della serie calcolate dal form corrente (anteprima + creazione)
+  const dateSerie = ricorrente
+    ? generaDateRicorrenza(form.data, form.ricorrenza, form.ricorrenza_fine, MAX_OCCORRENZE + 1)
+    : [form.data]
 
   const selezionaProfessionista = (p: string) => {
     // Selezione singola; rimuovi dai guest eventuali nomi incompatibili
@@ -154,6 +221,15 @@ function FormNuovoAppuntamento() {
       }
     }
     if (form.ora_inizio >= form.ora_fine) e.ora_fine = "L'ora di fine deve essere dopo l'inizio"
+    if (ricorrente) {
+      if (!form.ricorrenza_fine) {
+        e.ricorrenza_fine = 'Seleziona fino a quando ripetere'
+      } else if (form.ricorrenza_fine <= form.data) {
+        e.ricorrenza_fine = 'La data di fine ripetizione deve essere successiva alla data di inizio'
+      } else if (dateSerie.length > MAX_OCCORRENZE) {
+        e.ricorrenza_fine = `Massimo ${MAX_OCCORRENZE} appuntamenti per serie: scegli una data di fine più vicina`
+      }
+    }
     setErrori(e)
     return Object.keys(e).length === 0
   }
@@ -163,14 +239,16 @@ function FormNuovoAppuntamento() {
     if (!valida()) return
     setLoading(true)
     try {
-      const bodyAppuntamento = {
+      // data_fine solo se checkbox attiva E data successiva alla data inizio
+      const dataFineNorm = form.multiGiorno && form.data_fine && form.data_fine > form.data ? form.data_fine : null
+      // Per le serie multi-giorno ogni occorrenza mantiene la stessa durata in giorni
+      const durataGiorni = dataFineNorm ? differenceInCalendarDays(parseISO(dataFineNorm), parseISO(form.data)) : 0
+
+      const bodyBase = {
         cliente_nome: form.cliente_nome,
         cliente_telefono: form.cliente_telefono,
         cliente_dettagli: form.cliente_dettagli,
         indirizzo: form.cliente_indirizzo,
-        data: form.data,
-        // data_fine solo se checkbox attiva E data successiva alla data inizio
-        data_fine: form.multiGiorno && form.data_fine && form.data_fine > form.data ? form.data_fine : null,
         ora_inizio: form.ora_inizio,
         ora_fine: form.ora_fine,
         note: form.note,
@@ -179,24 +257,69 @@ function FormNuovoAppuntamento() {
         invitati: form.invitati,
         tipo: '',
       }
-      console.log('[Form] body appuntamento inviato:', bodyAppuntamento)
-      console.log('[Form] cliente_telefono nel body:', JSON.stringify(form.cliente_telefono))
-      const res = await fetch('/api/appuntamenti', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(bodyAppuntamento),
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.errore ?? 'Errore durante la creazione')
+
+      const inviaOccorrenza = async (data: string) => {
+        const bodyAppuntamento = {
+          ...bodyBase,
+          data,
+          data_fine: dataFineNorm ? spostaData(data, durataGiorni) : null,
+        }
+        console.log('[Form] body appuntamento inviato:', bodyAppuntamento)
+        const res = await fetch('/api/appuntamenti', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(bodyAppuntamento),
+        })
+        if (!res.ok) {
+          let messaggio = 'Errore durante la creazione'
+          try { messaggio = (await res.json()).errore ?? messaggio } catch {}
+          throw new Error(messaggio)
+        }
       }
-      toast.success('Appuntamento creato con successo!')
+
+      // Appuntamento singolo: comportamento classico
+      if (!ricorrente) {
+        await inviaOccorrenza(form.data)
+        toast.success('Appuntamento creato con successo!')
+        router.refresh()
+        router.push('/')
+        return
+      }
+
+      // Serie ricorrente: una POST per occorrenza, in sequenza.
+      // (Ogni occorrenza è un appuntamento indipendente: evento GCal, record Airtable,
+      // reminder e email .ics propri — così modifica/cancellazione funzionano come sempre.)
+      const totale = dateSerie.length
+      const fallite: string[] = []
+      setProgresso({ fatti: 0, totale })
+      for (let i = 0; i < totale; i++) {
+        try {
+          await inviaOccorrenza(dateSerie[i])
+        } catch (err) {
+          console.error(`[Form] occorrenza ${dateSerie[i]} fallita:`, err)
+          fallite.push(dateSerie[i])
+        }
+        setProgresso({ fatti: i + 1, totale })
+      }
+
+      const create = totale - fallite.length
+      if (fallite.length === 0) {
+        toast.success(`${totale} appuntamenti creati con successo!`)
+      } else if (create === 0) {
+        throw new Error('Nessun appuntamento creato: riprova')
+      } else {
+        toast.error(
+          `Creati ${create} appuntamenti su ${totale}. Non creati: ${fallite.map(formatDataBreve).join(', ')}`,
+          { duration: 10000 },
+        )
+      }
       router.refresh()
       router.push('/')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Errore durante la creazione')
     } finally {
       setLoading(false)
+      setProgresso(null)
     }
   }
 
@@ -435,6 +558,58 @@ function FormNuovoAppuntamento() {
             </label>
           </div>
 
+          {/* Ripeti — appuntamenti ricorrenti */}
+          <div className="px-4 py-3">
+            <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Ripeti</p>
+            <select
+              className="w-full text-sm text-[#1A1A1A] bg-transparent focus:outline-none"
+              value={form.ricorrenza}
+              onChange={(e) => {
+                const ricorrenza = e.target.value as Ricorrenza
+                setForm((prev) => ({
+                  ...prev,
+                  ricorrenza,
+                  // Attivando la ripetizione proponiamo una fine di default (~3 mesi);
+                  // disattivandola svuotiamo il campo.
+                  ricorrenza_fine: ricorrenza === 'nessuna'
+                    ? ''
+                    : (prev.ricorrenza_fine || spostaData(prev.data || oggi, 90)),
+                }))
+                if (errori.ricorrenza_fine) setErrori({ ...errori, ricorrenza_fine: undefined })
+              }}
+            >
+              {RICORRENZA_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {ricorrente && (
+            <div className="px-4 py-3">
+              <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1.5">Fino al</p>
+              <DatePicker
+                value={form.ricorrenza_fine}
+                min={form.data || oggi}
+                errore={!!errori.ricorrenza_fine}
+                onChange={(ricorrenza_fine) => {
+                  setForm({ ...form, ricorrenza_fine })
+                  if (errori.ricorrenza_fine) setErrori({ ...errori, ricorrenza_fine: undefined })
+                }}
+              />
+              {errori.ricorrenza_fine ? (
+                <p className="text-xs text-red-500 mt-1">{errori.ricorrenza_fine}</p>
+              ) : (
+                <p className="text-xs text-gray-400 mt-2">
+                  {dateSerie.length > MAX_OCCORRENZE
+                    ? `Più di ${MAX_OCCORRENZE} appuntamenti: scegli una data di fine più vicina`
+                    : dateSerie.length <= 1
+                      ? 'Verrà creato un solo appuntamento'
+                      : `Verranno creati ${dateSerie.length} appuntamenti, dal ${formatDataBreve(dateSerie[0])} al ${formatDataBreve(dateSerie[dateSerie.length - 1])}`}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Note */}
           <div className="px-4 py-2.5">
             <input
@@ -453,13 +628,16 @@ function FormNuovoAppuntamento() {
           </button>
           <button type="submit" disabled={loading} className="btn-primary flex-1 flex items-center justify-center gap-2">
             {loading ? (
-              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                {progresso && <span>Creazione {progresso.fatti}/{progresso.totale}…</span>}
+              </>
             ) : (
               <>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="20 6 9 17 4 12"/>
                 </svg>
-                Crea appuntamento
+                {ricorrente && dateSerie.length > 1 ? `Crea ${dateSerie.length} appuntamenti` : 'Crea appuntamento'}
               </>
             )}
           </button>
