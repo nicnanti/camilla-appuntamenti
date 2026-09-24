@@ -39,6 +39,33 @@ function invitatiIcs(invitati?: Invitato[]): string {
   return invitati.map((i) => `${i.nome}${i.telefono ? ` (${i.telefono})` : ''}`).join(', ')
 }
 
+// ─── Rendering note ──────────────────────────────────────────────────────────
+
+// Per body HTML (email): le note vanno a capo come le ha scritte l'utente
+function noteHtml(note?: string): string {
+  const n = (note ?? '').trim()
+  if (!n) return ''
+  return `<p><strong>Note:</strong><br>${escapeHtml(n).replace(/\r?\n/g, '<br>')}</p>`
+}
+
+// Per body testuale (email)
+function noteText(note?: string): string {
+  const n = (note ?? '').trim()
+  if (!n) return ''
+  return `\nNote: ${n}`
+}
+
+// Escape per i valori testuali iCalendar (RFC 5545 §3.3.11):
+// backslash, punto e virgola, virgola e ritorni a capo vanno protetti,
+// altrimenti una nota con una virgola o su più righe corrompe il file .ics.
+function escapeIcsText(s: string): string {
+  return s
+    .replace(/\\/g, '\\\\')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,')
+    .replace(/\r?\n/g, '\\n')
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -77,12 +104,13 @@ function generaIcs(
   const organizer = process.env.GMAIL_USER ?? 'nicola.nanti05@gmail.com'
 
   const invitatiRiga = invitatiIcs(dati.invitati)
+  const noteRiga = (dati.note ?? '').trim()
   const descrizione = [
     `Professionista: ${dati.professionistaNome}`,
     dati.cliente_telefono ? `Telefono: ${dati.cliente_telefono}` : '',
-    dati.note ? `Note: ${dati.note}` : '',
+    noteRiga ? `Note: ${noteRiga}` : '',
     invitatiRiga ? `Invitati: ${invitatiRiga}` : '',
-  ].filter(Boolean).join('\\n')
+  ].filter(Boolean).map(escapeIcsText).join('\\n')
 
   return [
     'BEGIN:VCALENDAR',
@@ -93,7 +121,7 @@ function generaIcs(
     `UID:${dati.icsUid}@studiorghisleni`,
     `DTSTART;TZID=Europe/Rome:${dtStart}`,
     `DTEND;TZID=Europe/Rome:${dtEnd}`,
-    `SUMMARY:${dati.cliente_nome}`,
+    `SUMMARY:${escapeIcsText(dati.cliente_nome)}`,
     `DESCRIPTION:${descrizione}`,
     'LOCATION:Studio Ghisleni',
     `ORGANIZER;CN=Studio Ghisleni:mailto:${organizer}`,
@@ -230,8 +258,8 @@ export async function inviaInvitoCalendario(
       replyTo: user,
       to: emailAssistente,
       subject: `Nuovo appuntamento: ${dati.cliente_nome} — ${dataIt} ore ${dati.ora_inizio}`,
-      text: `Nuovo appuntamento\nCliente: ${dati.cliente_nome}\nData: ${dataIt}\nOra: ${dati.ora_inizio} - ${dati.ora_fine}\nProfessionista: ${dati.professionistaNome}${invitatiText(dati.invitati)}`,
-      html: `<h3>Nuovo appuntamento</h3><p><strong>Cliente:</strong> ${escapeHtml(dati.cliente_nome)}</p><p><strong>Data:</strong> ${escapeHtml(dataIt)}</p><p><strong>Ora:</strong> ${escapeHtml(dati.ora_inizio)} - ${escapeHtml(dati.ora_fine)}</p><p><strong>Professionista:</strong> ${escapeHtml(dati.professionistaNome)}</p>${invitatiHtml(dati.invitati)}`,
+      text: `Nuovo appuntamento\nCliente: ${dati.cliente_nome}\nData: ${dataIt}\nOra: ${dati.ora_inizio} - ${dati.ora_fine}\nProfessionista: ${dati.professionistaNome}${noteText(dati.note)}${invitatiText(dati.invitati)}`,
+      html: `<h3>Nuovo appuntamento</h3><p><strong>Cliente:</strong> ${escapeHtml(dati.cliente_nome)}</p><p><strong>Data:</strong> ${escapeHtml(dataIt)}</p><p><strong>Ora:</strong> ${escapeHtml(dati.ora_inizio)} - ${escapeHtml(dati.ora_fine)}</p><p><strong>Professionista:</strong> ${escapeHtml(dati.professionistaNome)}</p>${noteHtml(dati.note)}${invitatiHtml(dati.invitati)}`,
       icalEvent: {
         filename: 'invite.ics',
         method: 'REQUEST',
@@ -260,8 +288,8 @@ export async function inviaModificaCalendario(
       replyTo: user,
       to: emailAssistente,
       subject: `Appuntamento aggiornato: ${dati.cliente_nome} — ${dataIt} ore ${dati.ora_inizio}`,
-      text: `Appuntamento aggiornato\nCliente: ${dati.cliente_nome}\nData: ${dataIt}\nOra: ${dati.ora_inizio} - ${dati.ora_fine}\nProfessionista: ${dati.professionistaNome}${invitatiText(dati.invitati)}`,
-      html: `<h3>Appuntamento aggiornato</h3><p><strong>Cliente:</strong> ${escapeHtml(dati.cliente_nome)}</p><p><strong>Data:</strong> ${escapeHtml(dataIt)}</p><p><strong>Ora:</strong> ${escapeHtml(dati.ora_inizio)} - ${escapeHtml(dati.ora_fine)}</p><p><strong>Professionista:</strong> ${escapeHtml(dati.professionistaNome)}</p>${invitatiHtml(dati.invitati)}`,
+      text: `Appuntamento aggiornato\nCliente: ${dati.cliente_nome}\nData: ${dataIt}\nOra: ${dati.ora_inizio} - ${dati.ora_fine}\nProfessionista: ${dati.professionistaNome}${noteText(dati.note)}${invitatiText(dati.invitati)}`,
+      html: `<h3>Appuntamento aggiornato</h3><p><strong>Cliente:</strong> ${escapeHtml(dati.cliente_nome)}</p><p><strong>Data:</strong> ${escapeHtml(dataIt)}</p><p><strong>Ora:</strong> ${escapeHtml(dati.ora_inizio)} - ${escapeHtml(dati.ora_fine)}</p><p><strong>Professionista:</strong> ${escapeHtml(dati.professionistaNome)}</p>${noteHtml(dati.note)}${invitatiHtml(dati.invitati)}`,
       icalEvent: {
         filename: 'invite.ics',
         method: 'REQUEST',
@@ -290,8 +318,8 @@ export async function inviaCancellazioneCalendario(
       replyTo: user,
       to: emailAssistente,
       subject: `Appuntamento cancellato: ${dati.cliente_nome} — ${dataIt} ore ${dati.ora_inizio}`,
-      text: `Appuntamento cancellato\nCliente: ${dati.cliente_nome}\nData: ${dataIt}\nOra: ${dati.ora_inizio} - ${dati.ora_fine}\nProfessionista: ${dati.professionistaNome}${invitatiText(dati.invitati)}`,
-      html: `<h3>Appuntamento cancellato</h3><p><strong>Cliente:</strong> ${escapeHtml(dati.cliente_nome)}</p><p><strong>Data:</strong> ${escapeHtml(dataIt)}</p><p><strong>Ora:</strong> ${escapeHtml(dati.ora_inizio)} - ${escapeHtml(dati.ora_fine)}</p><p><strong>Professionista:</strong> ${escapeHtml(dati.professionistaNome)}</p>${invitatiHtml(dati.invitati)}`,
+      text: `Appuntamento cancellato\nCliente: ${dati.cliente_nome}\nData: ${dataIt}\nOra: ${dati.ora_inizio} - ${dati.ora_fine}\nProfessionista: ${dati.professionistaNome}${noteText(dati.note)}${invitatiText(dati.invitati)}`,
+      html: `<h3>Appuntamento cancellato</h3><p><strong>Cliente:</strong> ${escapeHtml(dati.cliente_nome)}</p><p><strong>Data:</strong> ${escapeHtml(dataIt)}</p><p><strong>Ora:</strong> ${escapeHtml(dati.ora_inizio)} - ${escapeHtml(dati.ora_fine)}</p><p><strong>Professionista:</strong> ${escapeHtml(dati.professionistaNome)}</p>${noteHtml(dati.note)}${invitatiHtml(dati.invitati)}`,
       icalEvent: {
         filename: 'invite.ics',
         method: 'CANCEL',

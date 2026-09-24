@@ -756,12 +756,13 @@ function FormNuovoAppuntamento() {
             </div>
           )}
 
-          {/* Note */}
-          <div className="px-4 py-2.5">
-            <input
-              type="text"
-              className="w-full text-xs text-gray-400 placeholder-gray-300 bg-transparent focus:outline-none"
-              placeholder="Note (opzionale)"
+          {/* Note — finiscono nell'evento Google Calendar, nel file .ics e nel corpo dell'email agli staff */}
+          <div className="px-4 py-3">
+            <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1.5">Note</p>
+            <textarea
+              rows={3}
+              className="w-full text-sm text-[#1A1A1A] placeholder-gray-400 bg-transparent focus:outline-none resize-none"
+              placeholder="Note sull'appuntamento (opzionale): compaiono nell'avviso del calendario e nell'email"
               value={form.note}
               onChange={(e) => setForm({ ...form, note: e.target.value })}
             />

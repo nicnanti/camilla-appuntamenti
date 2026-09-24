@@ -546,6 +546,7 @@ export async function DELETE(request: NextRequest) {
       const datiIcs = {
         cliente_nome: appPreDelete.cliente_nome,
         cliente_telefono: appPreDelete.cliente_telefono,
+        note: appPreDelete.note ?? '',
         data: appPreDelete.data,
         ora_inizio: appPreDelete.ora_inizio,
         ora_fine: appPreDelete.ora_fine,
