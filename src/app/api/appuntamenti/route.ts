@@ -34,7 +34,7 @@ function asHost(prof: string | undefined): ProfessionistaHost | null {
 // - Ogni staff (Camilla/Giacomo/Fiorella/Viviana) presente in guestList riceve
 // - Eventuale CC sviluppo se DEV_EMAIL_CC è impostata
 // - MAI cliente principale, MAI invitati extra
-function destinatariIcs(_host: ProfessionistaHost, guestList: string[]): string[] {
+function destinatariIcs(_host: ProfessionistaHost, guestList: string[], includiDev = true): string[] {
   const EMAIL_CAMILLA  = process.env.CAMILLA_GMAIL_USER   ?? process.env.GOOGLE_CALENDAR_ID_CAMILLA
   const EMAIL_GIACOMO  = process.env.GIACOMO_GMAIL_USER   ?? process.env.GOOGLE_CALENDAR_ID_GIACOMO
   const EMAIL_FIORELLA = process.env.ASSISTANT_EMAIL_FIORELLA
@@ -50,7 +50,7 @@ function destinatariIcs(_host: ProfessionistaHost, guestList: string[]): string[
   if (guestList.includes('Viviana'))  lista.push(EMAIL_VIVIANA)
 
   // CC sviluppo (rimuovi env var DEV_EMAIL_CC per disattivarlo)
-  if (EMAIL_DEV) lista.push(EMAIL_DEV)
+  if (EMAIL_DEV && includiDev) lista.push(EMAIL_DEV)
 
   return Array.from(new Set(lista.filter((e): e is string => !!e && e.trim() !== '')))
 }
@@ -165,7 +165,8 @@ export async function GET(request: NextRequest) {
     const inizio = searchParams.get('inizio') ?? undefined
     const fine   = searchParams.get('fine') ?? undefined
     const prof   = (searchParams.get('professionista') ?? '').toLowerCase()
-    const appuntamenti = await getAppuntamenti({ mese, inizio, fine })
+    const appuntamenti = (await getAppuntamenti({ mese, inizio, fine }))
+      .map((a) => ({ ...a, guest_nomi: nomiStaffDaGuestsField(a.guests ?? '') }))
     const range = inizio && fine ? `${inizio}→${fine}` : (mese ?? '*')
     console.log(`[GET /api/appuntamenti] range=${range} prof=${prof || '*'} → letti da Airtable: ${appuntamenti.length}`)
 
@@ -356,7 +357,7 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json()
-    const { id, google_calendar_event_id, ics_uid, ics_sequence, guests: guestsField, professionista: profField, ...datiAggiornamento } = body
+    const { id, google_calendar_event_id, ics_uid, ics_sequence, guests: guestsField, guest: guestBody, professionista: profField, ...datiAggiornamento } = body
 
     if (!id) return NextResponse.json({ errore: 'ID mancante' }, { status: 400 })
 
@@ -364,6 +365,7 @@ export async function PATCH(request: NextRequest) {
     const tStart = Date.now()
     let orarioCambiato = false
     let profDalRecord = ''
+    let guestsDalRecord: string | undefined
     try {
       const corrente = await getAppuntamentoById(id)
       orarioCambiato =
@@ -371,6 +373,7 @@ export async function PATCH(request: NextRequest) {
         (datiAggiornamento.ora_inizio !== undefined && datiAggiornamento.ora_inizio !== corrente.ora_inizio) ||
         (datiAggiornamento.ora_fine !== undefined && datiAggiornamento.ora_fine !== corrente.ora_fine)
       profDalRecord = corrente.professionista ?? ''
+      guestsDalRecord = corrente.guests
     } catch (err) {
       console.warn('[PATCH] Impossibile leggere record corrente per confronto orari:', err)
     }
@@ -386,10 +389,22 @@ export async function PATCH(request: NextRequest) {
     const reminderReset = orarioCambiato ? { reminder_sent: false, reminder_sent_at: null } : {}
     const entries = parseCalendarEvents(google_calendar_event_id)
 
-    const guestEmailsPatch: string[] = typeof guestsField === 'string'
-      ? guestsField.split(',').map((e: string) => e.trim()).filter(Boolean)
-      : []
+    // Guest staff: quelli già presenti (dal record, fallback body) e quelli nuovi se
+    // il body contiene `guest` (string[] di nomi) — permette di aggiungere/rimuovere
+    // Camilla/Giacomo/Fiorella/Viviana su un appuntamento esistente.
     // NB: gli `invitati` NON ricevono email .ics — sono clienti aggiuntivi, non staff.
+    const guestPrecedenti = nomiStaffDaGuestsField(guestsDalRecord ?? (typeof guestsField === 'string' ? guestsField : ''))
+    const guestCambiati = Array.isArray(guestBody)
+    const guestNuovi: string[] = guestCambiati
+      ? Array.from(new Set(guestBody as string[])).filter((n) => n in EMAIL_MAP && n !== profEffettivo)
+      : guestPrecedenti
+    const guestsAggiornati = guestCambiati ? { guests: resolveEmails(guestNuovi).join(',') } : {}
+    const guestAggiunti = guestNuovi.filter((n) => !guestPrecedenti.includes(n))
+    const guestRimossi = guestPrecedenti.filter((n) => !guestNuovi.includes(n))
+    const guestConfermati = guestNuovi.filter((n) => guestPrecedenti.includes(n))
+    if (guestCambiati) {
+      console.log(`[PATCH] guest: prima=[${guestPrecedenti}] dopo=[${guestNuovi}] aggiunti=[${guestAggiunti}] rimossi=[${guestRimossi}]`)
+    }
 
     // ── Google Calendar: tutti i calendari in PARALLELO (no attendees, no sendUpdates) ─
     const tGcal = Date.now()
@@ -408,6 +423,7 @@ export async function PATCH(request: NextRequest) {
     const [appuntamento] = await Promise.all([
       aggiornaAppuntamento(id, {
         ...datiAggiornamento,
+        ...guestsAggiornati,
         ...reminderReset,
         google_calendar_event_id,
         ics_sequence: nuovaSequence,
@@ -415,6 +431,7 @@ export async function PATCH(request: NextRequest) {
       primaryEntry?.eventId
         ? aggiornaProssimoAppuntamentoByGcalId(primaryEntry.eventId, {
             ...datiAggiornamento,
+            ...guestsAggiornati,
             ...reminderReset,
             ics_sequence: nuovaSequence,
           })
@@ -448,29 +465,32 @@ export async function PATCH(request: NextRequest) {
         icsSequence: nuovaSequence,
         invitati: Array.isArray(datiAggiornamento.invitati) ? datiAggiornamento.invitati : (appuntamento.invitati ?? []),
       }
-      // I `guests` su Airtable sono email — derivo i nomi staff da lì
-      const guestListPatch = nomiStaffDaGuestsField(guestEmailsPatch.join(','))
-      const destinatari = destinatariIcs(hostPatch, guestListPatch)
+      // Guest già presenti → MODIFICA, nuovi guest → INVITO, guest rimossi → CANCEL
+      const invii = [
+        ...destinatariIcs(hostPatch, guestConfermati).map((email) => ({ email, tipo: 'MODIFICA', invia: inviaModificaCalendario })),
+        ...destinatariIcs(hostPatch, guestAggiunti, false).map((email) => ({ email, tipo: 'INVITO', invia: inviaInvitoCalendario })),
+        ...destinatariIcs(hostPatch, guestRimossi, false).map((email) => ({ email, tipo: 'CANCEL', invia: inviaCancellazioneCalendario })),
+      ]
 
       console.log(`[PATCH] avvio invio email con host="${hostPatch}"`)
-      console.log(`[PATCH] destinatari email:`, destinatari)
+      console.log(`[PATCH] destinatari email:`, invii.map((i) => `${i.tipo} → ${i.email}`))
 
-      if (destinatari.length === 0) {
+      if (invii.length === 0) {
         console.log(`[PATCH] NESSUN destinatario — skip invio`)
       } else {
         // Sequenziale con 500ms di pausa. waitUntil() previene troncamento serverless.
         waitUntil((async () => {
           let okCount = 0
-          for (const email of destinatari) {
+          for (const { email, tipo, invia } of invii) {
             try {
-              await inviaModificaCalendario(datiIcs, email, hostPatch)
+              await invia(datiIcs, email, hostPatch)
               okCount++
             } catch (err) {
-              console.error(`[Email] ✗ MODIFICA (da ${hostPatch}) → ${email}`, err)
+              console.error(`[Email] ✗ ${tipo} (da ${hostPatch}) → ${email}`, err)
             }
             await new Promise((resolve) => setTimeout(resolve, 500))
           }
-          console.log(`[Email .ics PATCH] ${okCount}/${destinatari.length} inviate (host: ${hostPatch}, destinatari: ${destinatari.join(', ')})`)
+          console.log(`[Email .ics PATCH] ${okCount}/${invii.length} inviate (host: ${hostPatch}, destinatari: ${invii.map((i) => `${i.tipo} ${i.email}`).join(', ')})`)
         })())
       }
     }

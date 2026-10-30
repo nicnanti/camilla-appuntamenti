@@ -19,6 +19,7 @@ export interface Appuntamento {
   professionista?: string            // "Camilla" | "Giacomo" — per UI/colori
   host?: string                      // email del professionista — colonna Airtable "host"
   guests?: string                    // email dei guest comma-separated — colonna Airtable "guests"
+  guest_nomi?: string[]              // nomi staff derivati da `guests` (calcolato dall'API, non su Airtable)
   indirizzo?: string                 // luogo dell'appuntamento (Via, Comune, Provincia)
   invitati?: Invitato[]              // invitati extra dalla tabella Contatti (JSON nel campo Airtable "invitati")
   reminder_sent: boolean

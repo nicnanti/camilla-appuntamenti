@@ -8,6 +8,9 @@ import InvitatiPicker from './InvitatiPicker'
 import type { Appuntamento, Invitato } from '@/types'
 import clsx from 'clsx'
 
+// Staff selezionabile come guest (l'host viene escluso)
+const GUEST_STAFF = ['Camilla', 'Giacomo', 'Fiorella', 'Viviana']
+
 interface Props {
   appuntamento: Appuntamento
   onClose: () => void
@@ -32,7 +35,14 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
     ora_fine: appuntamento.ora_fine,
     indirizzo: appuntamento.indirizzo ?? '',
     invitati: appuntamento.invitati ?? [],
+    guest: appuntamento.guest_nomi ?? [],
   })
+
+  const toggleGuest = (g: string) =>
+    setForm((prev) => ({
+      ...prev,
+      guest: prev.guest.includes(g) ? prev.guest.filter((x) => x !== g) : [...prev.guest, g],
+    }))
 
   const aggiorna = async () => {
     setLoading(true)
@@ -50,6 +60,9 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
         professionista: host || appuntamento.professionista,
         ...form,
         data_fine: dataFineNorm,
+        // Invia i guest solo se li conosciamo (guest_nomi dal GET), altrimenti il server
+        // li considererebbe tutti rimossi.
+        guest: appuntamento.guest_nomi ? form.guest.filter((g) => g !== host) : undefined,
       }
       console.log('[Modal Modifica] click Salva, invio PATCH:', body)
       const res = await fetch('/api/appuntamenti', {
@@ -317,6 +330,28 @@ export default function AppointmentModal({ appuntamento, onClose, onAggiornato }
                   />
                 </div>
               </div>
+              {appuntamento.guest_nomi && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Guest</label>
+                  <div className="flex flex-wrap gap-2">
+                    {GUEST_STAFF.filter((g) => g !== host).map((g) => (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() => toggleGuest(g)}
+                        className={clsx(
+                          'px-3 py-1 rounded-full text-xs font-medium border transition-all cursor-pointer select-none',
+                          form.guest.includes(g)
+                            ? 'bg-amber-500 border-amber-500 text-white'
+                            : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300',
+                        )}
+                      >
+                        {g}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1.5">Invitati</label>
                 <InvitatiPicker

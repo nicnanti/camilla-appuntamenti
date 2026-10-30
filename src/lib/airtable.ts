@@ -198,6 +198,7 @@ export async function aggiornaAppuntamento(
   if (dati.ics_sequence !== undefined) campi.ics_sequence = dati.ics_sequence
   if (dati.invitati !== undefined) campi.invitati = stringifyInvitati(dati.invitati)
   if (dati.indirizzo !== undefined) campi.location = dati.indirizzo
+  if (dati.guests !== undefined) campi.guests = dati.guests
   assegnaCampoData(campi, 'data_fine', dati.data_fine)
 
   const record = await tabellaAppuntamenti.update(id, campi as Airtable.FieldSet)
@@ -264,6 +265,7 @@ export async function aggiornaProssimoAppuntamentoByGcalId(
   if (dati.ics_sequence !== undefined) campi.ics_sequence = dati.ics_sequence
   if (dati.invitati !== undefined) campi.invitati = stringifyInvitati(dati.invitati)
   if (dati.indirizzo !== undefined) campi.location = dati.indirizzo
+  if (dati.guests !== undefined) campi.guests = dati.guests
   assegnaCampoData(campi, 'data_fine', dati.data_fine)
 
   await tabellaProssimiAppuntamenti.update(records[0].id, campi as Airtable.FieldSet)

@@ -36,13 +36,13 @@ function isStessoGiorno(a: Date, b: Date): boolean {
 const ALTEZZA_ORA = 48
 const ORE_VISIBILI = Array.from({ length: 24 }, (_, i) => i) // 0..23
 
-function offsetTopDaOra(orario: string): number {
+function offsetTopDaOra(orario: string, altezzaOra = ALTEZZA_ORA): number {
   const [h, m] = orario.split(':').map(Number)
-  return (h * 60 + m) * (ALTEZZA_ORA / 60)
+  return (h * 60 + m) * (altezzaOra / 60)
 }
 
-function altezzaDaDurata(inizio: string, fine: string): number {
-  const h = offsetTopDaOra(fine) - offsetTopDaOra(inizio)
+function altezzaDaDurata(inizio: string, fine: string, altezzaOra = ALTEZZA_ORA): number {
+  const h = offsetTopDaOra(fine, altezzaOra) - offsetTopDaOra(inizio, altezzaOra)
   return Math.max(h, 22) // minimo 22px per stare comoda 1 riga di testo
 }
 
@@ -54,6 +54,56 @@ function durataInMinuti(inizio: string, fine: string): number {
 
 function isMultiGiorno(app: Appuntamento): boolean {
   return !!(app.data_fine && app.data_fine > app.data)
+}
+
+// Orari effettivi di un appuntamento in un dato giorno: per i multi-giorno
+// i giorni intermedi coprono l'intera giornata (00:00–24:00).
+function orariNelGiorno(app: Appuntamento, dataStr: string): { inizio: string; fine: string } {
+  if (!isMultiGiorno(app)) return { inizio: app.ora_inizio, fine: app.ora_fine }
+  return {
+    inizio: dataStr > app.data ? '00:00' : app.ora_inizio,
+    fine: dataStr < app.data_fine! ? '24:00' : app.ora_fine,
+  }
+}
+
+// Affianca gli appuntamenti sovrapposti: per ognuno restituisce la colonna
+// e il numero di colonne del gruppo di sovrapposizione a cui appartiene.
+function layoutColonne(apps: Appuntamento[], dataStr: string): Map<string, { col: number; cols: number }> {
+  const minuti = (o: string) => { const [h, m] = o.split(':').map(Number); return h * 60 + m }
+  const items = apps
+    .map((app) => {
+      const { inizio, fine } = orariNelGiorno(app, dataStr)
+      const start = minuti(inizio)
+      return { id: app.id, start, end: Math.max(minuti(fine), start + 1) }
+    })
+    .sort((a, b) => a.start - b.start || b.end - a.end)
+
+  const out = new Map<string, { col: number; cols: number }>()
+  let gruppo: { id: string; col: number }[] = []
+  let fineColonne: number[] = []
+  let fineGruppo = -1
+  const chiudiGruppo = () => {
+    for (const g of gruppo) out.set(g.id, { col: g.col, cols: fineColonne.length })
+    gruppo = []
+    fineColonne = []
+  }
+  for (const it of items) {
+    if (it.start >= fineGruppo) chiudiGruppo()
+    let col = fineColonne.findIndex((fine) => fine <= it.start)
+    if (col === -1) { col = fineColonne.length; fineColonne.push(it.end) } else fineColonne[col] = it.end
+    gruppo.push({ id: it.id, col })
+    fineGruppo = Math.max(fineGruppo, it.end)
+  }
+  chiudiGruppo()
+  return out
+}
+
+function stileColonna(pos: { col: number; cols: number } | undefined, marginePx: number): { left: string; width: string } {
+  const { col, cols } = pos ?? { col: 0, cols: 1 }
+  return {
+    left: `calc(${(col * 100) / cols}% + ${marginePx}px)`,
+    width: `calc(${100 / cols}% - ${marginePx * 2}px)`,
+  }
 }
 
 // Estrae i professionisti coinvolti (Camilla, Giacomo) sia dal campo professionista
@@ -149,16 +199,17 @@ interface GiornataSidebarProps {
   onChiudi: () => void
 }
 
-function GiornataSidebar({ data, appuntamenti, filtroSingolo, onSeleziona, onCreaAppuntamento, onChiudi }: GiornataSidebarProps) {
-  const oreVisibili = Array.from({ length: 24 }, (_, i) => i) // 0-23
+// Altezza in px di un'ora nel pannello giornata (vista mese)
+const ALTEZZA_ORA_SIDEBAR = 56
 
+function GiornataSidebar({ data, appuntamenti, filtroSingolo, onSeleziona, onCreaAppuntamento, onChiudi }: GiornataSidebarProps) {
   const formatOra = (h: number) => `${String(h).padStart(2, '0')}:00`
 
-  const appPerOra = (ora: number) =>
-    appuntamenti.filter((a) => {
-      const [h] = a.ora_inizio.split(':').map(Number)
-      return h === ora && a.stato !== 'Cancellato'
-    })
+  // Ogni appuntamento occupa tutta la sua durata (es. un blocco "no app" 16–21
+  // copre l'intero pomeriggio), non solo la riga dell'ora di inizio.
+  const dataStr = ymd(data)
+  const attivi = appuntamenti.filter((a) => a.stato !== 'Cancellato')
+  const colonne = layoutColonne(attivi, dataStr)
 
   return (
     <div className="md:w-80 md:flex-shrink-0 md:relative md:border-l md:border-[#E5E7EB] md:inset-auto fixed inset-0 z-40 bg-white flex flex-col">
@@ -183,53 +234,66 @@ function GiornataSidebar({ data, appuntamenti, filtroSingolo, onSeleziona, onCre
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {oreVisibili.map((h) => {
-          const apps = appPerOra(h)
-          const oraSlot = formatOra(h)
-          return (
+        <div className="relative">
+          {/* Righe orarie: click = crea nuovo appuntamento a questo orario */}
+          {ORE_VISIBILI.map((h) => (
             <div
               key={h}
-              onClick={(e) => {
-                // Ignora click sui bottoni appuntamento (usano stopPropagation).
-                // Click sul resto della riga = crea nuovo appuntamento a questo orario.
-                if (e.target === e.currentTarget || (e.target as HTMLElement).dataset.slotArea === 'true') {
-                  onCreaAppuntamento(data, oraSlot)
-                }
-              }}
-              className="flex border-b border-[#F3F4F6] min-h-[56px] cursor-pointer hover:bg-blue-50/40 transition-colors group"
+              onClick={() => onCreaAppuntamento(data, formatOra(h))}
+              className="flex border-b border-[#F3F4F6] cursor-pointer hover:bg-blue-50/40 transition-colors group"
+              style={{ height: ALTEZZA_ORA_SIDEBAR }}
               title="Crea appuntamento in questa fascia oraria"
             >
-              <div className="w-14 flex-shrink-0 px-3 py-2" data-slot-area="true">
+              <div className="w-14 flex-shrink-0 px-3 py-2">
                 <span className="text-xs text-gray-300 group-hover:text-[#1E3A5F]">{formatOra(h)}</span>
               </div>
-              <div className="flex-1 p-1.5 space-y-1" data-slot-area="true">
-                {apps.map((app) => {
-                  const colori = getColoriApp(app, filtroSingolo)
-                  return (
-                  <button
-                    key={app.id}
-                    onClick={(e) => { e.stopPropagation(); onSeleziona(app) }}
-                    className={clsx(
-                      'w-full text-left px-2.5 py-2 rounded-lg border text-xs font-medium transition-all hover:shadow-soft',
-                      colori.chip
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="font-semibold truncate">{app.cliente_nome}</p>
-                      {colori.isGuest && (
-                        <span className="text-[9px] uppercase tracking-wider opacity-80 px-1.5 py-0.5 rounded-full border border-current">
-                          ospite
-                        </span>
-                      )}
-                    </div>
-                    <p className="opacity-70">{app.ora_inizio} – {app.ora_fine}</p>
-                  </button>
-                  )
-                })}
-              </div>
             </div>
-          )
-        })}
+          ))}
+
+          {/* Appuntamenti posizionati in base a inizio e durata */}
+          <div className="absolute top-0 bottom-0 left-14 right-0 pointer-events-none">
+            {attivi.map((app) => {
+              const colori = getColoriApp(app, filtroSingolo)
+              const { inizio, fine } = orariNelGiorno(app, dataStr)
+              const compatto = durataInMinuti(inizio, fine) <= 30
+              return (
+                <button
+                  key={app.id}
+                  onClick={() => onSeleziona(app)}
+                  className={clsx(
+                    'absolute pointer-events-auto text-left rounded-lg border text-xs font-medium overflow-hidden transition-all hover:shadow-soft',
+                    compatto ? 'px-2 py-0.5' : 'px-2.5 py-1.5',
+                    colori.chip
+                  )}
+                  style={{
+                    top: offsetTopDaOra(inizio, ALTEZZA_ORA_SIDEBAR) + 1,
+                    height: altezzaDaDurata(inizio, fine, ALTEZZA_ORA_SIDEBAR) - 2,
+                    ...stileColonna(colonne.get(app.id), 3),
+                  }}
+                >
+                  {compatto ? (
+                    <p className="truncate leading-tight whitespace-nowrap">
+                      <span className="font-semibold">{app.cliente_nome}</span>{' '}
+                      <span className="opacity-70 font-normal">{app.ora_inizio}–{app.ora_fine}</span>
+                    </p>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-semibold truncate">{app.cliente_nome}</p>
+                        {colori.isGuest && (
+                          <span className="text-[9px] uppercase tracking-wider opacity-80 px-1.5 py-0.5 rounded-full border border-current">
+                            ospite
+                          </span>
+                        )}
+                      </div>
+                      <p className="opacity-70 truncate">{app.ora_inizio} – {app.ora_fine}</p>
+                    </>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
       </div>
 
       {appuntamenti.filter(a => a.stato !== 'Cancellato').length === 0 && (
@@ -615,6 +679,8 @@ function SettimanaView({ giorni, getAppPerGiorno, isOggi, filtroSingolo, onSelez
         </div>
         {giorni.map((g) => {
           const apps = getAppPerGiorno(g)
+          const dataStr = ymd(g)
+          const colonne = layoutColonne(apps, dataStr)
           return (
             <div key={g.toISOString()} className="relative border-r border-[#E5E7EB]">
               {ORE_VISIBILI.map((h) => (
@@ -622,20 +688,22 @@ function SettimanaView({ giorni, getAppPerGiorno, isOggi, filtroSingolo, onSelez
               ))}
               {apps.map((app) => {
                 const colori = getColoriApp(app, filtroSingolo)
-                const compatto = durataInMinuti(app.ora_inizio, app.ora_fine) <= 30
+                const { inizio, fine } = orariNelGiorno(app, dataStr)
+                const compatto = durataInMinuti(inizio, fine) <= 30
                 const multi = isMultiGiorno(app)
                 return (
                   <button
                     key={app.id}
                     onClick={() => onSeleziona(app)}
                     className={clsx(
-                      'absolute left-1 right-1 rounded-md border text-left overflow-hidden hover:shadow-soft transition-shadow',
+                      'absolute rounded-md border text-left overflow-hidden hover:shadow-soft transition-shadow',
                       compatto ? 'px-1 py-px' : 'px-1.5 py-0.5',
                       colori.chip,
                     )}
                     style={{
-                      top: offsetTopDaOra(app.ora_inizio),
-                      height: altezzaDaDurata(app.ora_inizio, app.ora_fine),
+                      top: offsetTopDaOra(inizio),
+                      height: altezzaDaDurata(inizio, fine),
+                      ...stileColonna(colonne.get(app.id), 4),
                     }}
                   >
                     {compatto ? (
@@ -681,6 +749,8 @@ interface GiornoViewProps {
 }
 
 function GiornoView({ data, appuntamenti, isOggi, filtroSingolo, onSeleziona }: GiornoViewProps) {
+  const dataStr = ymd(data)
+  const colonne = layoutColonne(appuntamenti, dataStr)
   return (
     <div className="flex-1 overflow-auto rounded-xl border border-[#E5E7EB] bg-white">
       <div className={clsx('px-4 py-3 border-b border-[#E5E7EB]', isOggi ? 'bg-[#1E3A5F]/5' : 'bg-[#FAFAFA]')}>
@@ -707,20 +777,22 @@ function GiornoView({ data, appuntamenti, isOggi, filtroSingolo, onSeleziona }: 
           ))}
           {appuntamenti.map((app) => {
             const colori = getColoriApp(app, filtroSingolo)
-            const compatto = durataInMinuti(app.ora_inizio, app.ora_fine) <= 30
+            const { inizio, fine } = orariNelGiorno(app, dataStr)
+            const compatto = durataInMinuti(inizio, fine) <= 30
             const multi = isMultiGiorno(app)
             return (
               <button
                 key={app.id}
                 onClick={() => onSeleziona(app)}
                 className={clsx(
-                  'absolute left-2 right-2 rounded-md border text-left overflow-hidden hover:shadow-soft transition-shadow',
+                  'absolute rounded-md border text-left overflow-hidden hover:shadow-soft transition-shadow',
                   compatto ? 'px-2 py-0.5' : 'px-2 py-1',
                   colori.chip,
                 )}
                 style={{
-                  top: offsetTopDaOra(app.ora_inizio),
-                  height: altezzaDaDurata(app.ora_inizio, app.ora_fine),
+                  top: offsetTopDaOra(inizio),
+                  height: altezzaDaDurata(inizio, fine),
+                  ...stileColonna(colonne.get(app.id), 8),
                 }}
               >
                 {compatto ? (
